@@ -3,13 +3,12 @@
 // Year & Category dropdowns fetched from apiService
 // ============================================================
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import Sidebar from "../../components/Sidebar";
 import Footer from "../../components/Footer";
-import {
-  getAcademicYears, getReservedCategories,
-  getRecords, addRecord, deleteRecord
-} from "../../api/apiService";
+import { getAcademicYears, getReservedCategories, getRecords, addRecord, deleteRecord, getExcelExportUrl } from "../../api/apiService";
+import { CriterionProofFileSection } from "../../components/criteria/CriterionProofSection";
+import { DropdownWithAddMore } from "../../components/forms";
+import { getSessionYear } from "../../utils/session";
 
 const catColors = {
   SC: { bg: "#dbeafe", text: "#1d4ed8" },
@@ -20,17 +19,15 @@ const catColors = {
   Others: { bg: "#f1f5f9", text: "#475569" },
 };
 
-const emptyRow = () => ({ year: "", category: "", reserved_seats: "", document_link: "" });
+const emptyRow = () => ({ year: getSessionYear(), category: "", reserved_seats: "" });
 
 export default function Criterion2_2() {
-  const navigate = useNavigate();
   const [yearOptions, setYearOptions] = useState([]);
   const [categoryOptions, setCategoryOptions] = useState([]);
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   const [rows, setRows] = useState([emptyRow()]);
   const [records, setRecords] = useState([]);
   const [alert, setAlert] = useState(null);
-
   useEffect(() => {
     Promise.all([getAcademicYears(), getReservedCategories(), getRecords("2_2")])
       .then(([years, cats, recs]) => {
@@ -52,14 +49,23 @@ export default function Criterion2_2() {
     setRows(rows.map((r, idx) => idx === i ? { ...r, [field]: val } : r));
 
   const handleSave = async () => {
+    try {
     for (const r of rows) {
       if (!r.year || !r.category || !r.reserved_seats) {
         return showAlert("Fill Year, Category and Seats for every row.", "danger");
       }
-      const result = await addRecord("2_2", r);
-      if (result.success) setRecords(prev => [...prev, result.data]);
+      let payload = { year: r.year, category: r.category, reserved_seats: r.reserved_seats };
+      const result = await addRecord("2_2", payload);
+      if (!result.success) {
+        return showAlert(result.error || "Failed to save record. Check all fields.", "danger");
+      }
+    }
+    } catch (err) {
+      return showAlert(err.message || "Save failed.", "danger");
     }
     setRows([emptyRow()]);
+    const updated = await getRecords("2_2");
+    setRecords(Array.isArray(updated) ? updated : []);
     showAlert("Records saved!");
   };
 
@@ -70,6 +76,8 @@ export default function Criterion2_2() {
     showAlert("Record deleted.");
   };
 
+  const handleExportExcel = () => window.open(getExcelExportUrl("2_2"), "_blank");
+
   return (
     <div className="app-layout">
       <Sidebar activePage="2_2" />
@@ -79,7 +87,7 @@ export default function Criterion2_2() {
             <p className="text-muted mb-0" style={{ fontSize: "0.78rem", textTransform: "uppercase", letterSpacing: 1 }}>Criteria 2</p>
             <h4>2.2: Reserved Category Seats</h4>
           </div>
-          <button className="btn btn-success btn-sm fw-semibold" onClick={() => navigate("/export/2-2")}>
+          <button className="btn btn-success btn-sm fw-semibold" onClick={() => { window.location.href = '/api/export-excel/2_2'; }}>
             <i className="bi bi-file-earmark-excel me-1"></i> Export Excel
           </button>
         </header>
@@ -104,8 +112,11 @@ export default function Criterion2_2() {
               ) : (
                 <>
                   <div className="row g-2 mb-1 d-none d-md-flex">
-                    {["Academic Year", "Category", "No. of Reserved Seats", "Document Link (Drive/URL)", ""].map((h, i) => (
-                      <div key={i} className={i === 3 ? "col-md-4" : i === 4 ? "col-md-1" : "col-md-2"}>
+                    {["Academic Year", "Category", "No. of Reserved Seats", ""].map((h, i) => (
+                      <div
+                        key={i}
+                        className={i === 3 ? "col-md-1" : i === 2 ? "col-md-7" : "col-md-2"}
+                      >
                         <span className="form-label-custom">{h}</span>
                       </div>
                     ))}
@@ -114,26 +125,42 @@ export default function Criterion2_2() {
                   {rows.map((row, i) => (
                     <div key={i} className="row g-2 mb-2 align-items-center">
                       <div className="col-md-2">
-                        <select className="form-select form-select-sm" value={row.year}
-                          onChange={e => updateRow(i, "year", e.target.value)}>
-                          <option value="">Select Year</option>
-                          {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
-                        </select>
+                        <DropdownWithAddMore
+                          label=""
+                          selectClassName="form-select form-select-sm"
+                          value={row.year}
+                          onChange={(v) => updateRow(i, "year", v)}
+                          options={yearOptions.map((y) => ({ value: y, label: y }))}
+                          optionValue={(o) => o.value}
+                          optionLabel={(o) => o.label}
+                          placeholder="Select Year"
+                          addMoreMode="lookup"
+                          lookupKey="academic-years"
+                          onAfterAdd={() =>
+                            getAcademicYears().then((ys) => setYearOptions(ys || []))
+                          }
+                        />
                       </div>
                       <div className="col-md-2">
-                        <select className="form-select form-select-sm" value={row.category}
-                          onChange={e => updateRow(i, "category", e.target.value)}>
-                          <option value="">Select Category</option>
-                          {categoryOptions.map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
+                        <DropdownWithAddMore
+                          label=""
+                          selectClassName="form-select form-select-sm"
+                          value={row.category}
+                          onChange={(v) => updateRow(i, "category", v)}
+                          options={categoryOptions.map((c) => ({ value: c, label: c }))}
+                          optionValue={(o) => o.value}
+                          optionLabel={(o) => o.label}
+                          placeholder="Select Category"
+                          addMoreMode="lookup"
+                          lookupKey="reserved-categories"
+                          onAfterAdd={() =>
+                            getReservedCategories().then((cats) => setCategoryOptions(cats || []))
+                          }
+                        />
                       </div>
-                      <div className="col-md-2">
+                      <div className="col-md-7">
                         <input type="number" className="form-control form-control-sm" placeholder="No. of Seats"
                           value={row.reserved_seats} onChange={e => updateRow(i, "reserved_seats", e.target.value)} />
-                      </div>
-                      <div className="col-md-4">
-                        <input type="url" className="form-control form-control-sm" placeholder="https://drive.google.com/..."
-                          value={row.document_link} onChange={e => updateRow(i, "document_link", e.target.value)} />
                       </div>
                       <div className="col-md-1">
                         <button className="btn btn-outline-danger btn-sm w-100" onClick={() => removeRow(i)}>×</button>
@@ -162,13 +189,12 @@ export default function Criterion2_2() {
                     <th>Year</th>
                     <th>Category</th>
                     <th>Reserved Seats</th>
-                    <th>Supporting Document</th>
                     <th className="text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {records.length === 0 ? (
-                    <tr><td colSpan={5} className="text-center text-muted py-5">No records found.</td></tr>
+                    <tr><td colSpan={4} className="text-center text-muted py-5">No records found.</td></tr>
                   ) : records.map(row => {
                     const c = catColors[row.category] || { bg: "#f1f5f9", text: "#475569" };
                     return (
@@ -180,11 +206,6 @@ export default function Criterion2_2() {
                           </span>
                         </td>
                         <td className="fw-bold">{row.reserved_seats}</td>
-                        <td>
-                          {row.document_link
-                            ? <a href={row.document_link} target="_blank" rel="noreferrer" className="text-decoration-none text-danger small"><i className="bi bi-link-45deg me-1"></i>View Document</a>
-                            : <span className="text-muted small">No link provided</span>}
-                        </td>
                         <td className="text-center">
                           <button className="btn btn-outline-danger btn-sm" onClick={() => handleDelete(row.id)}>
                             <i className="bi bi-trash"></i>
@@ -198,7 +219,8 @@ export default function Criterion2_2() {
             </div>
           </div>
         </div>
-        <Footer />
+          <CriterionProofFileSection criterionKey="2_2" />
+          <Footer />
       </div>
     </div>
   );

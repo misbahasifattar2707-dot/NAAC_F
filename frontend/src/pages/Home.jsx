@@ -5,32 +5,22 @@ export default function Home() {
   const navigate = useNavigate();
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#f4f6f9" }}>
+    <div className="app-shell">
       {/* Header */}
-      <header style={{
-        background: "linear-gradient(135deg, #1a1a2e 0%, #dc3545 100%)",
-        padding: "2.5rem 2rem",
-        textAlign: "center",
-        color: "#fff",
-      }}>
-        <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: "2rem", fontWeight: 400, letterSpacing: 2, marginBottom: "0.3rem" }}>
+      <header className="home-hero">
+        <h1 className="home-title">
           MET BHUJBAL KNOWLEDGE CITY
         </h1>
-        <h2 style={{ fontSize: "1.3rem", fontWeight: 400, opacity: 0.85, marginBottom: "0.2rem" }}>
+        <h2 className="home-subtitle">
           INSTITUTE OF ENGINEERING
         </h2>
-        <p style={{ opacity: 0.65, margin: 0, fontSize: "0.95rem" }}>Adgaon, Nashik</p>
+        <p className="home-location">Adgaon, Nashik</p>
       </header>
 
       {/* Main */}
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "3rem 1rem" }}>
-        <div className="card border-0 shadow-lg p-5 text-center fade-in" style={{ maxWidth: 640, width: "100%", borderRadius: 20 }}>
-          <div style={{
-            width: 80, height: 80, borderRadius: "50%",
-            background: "linear-gradient(135deg,#dc3545,#c0392b)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            margin: "0 auto 1.5rem", boxShadow: "0 8px 24px rgba(220,53,69,0.3)"
-          }}>
+      <div className="home-main">
+        <div className="card border-0 shadow-lg p-5 text-center fade-in hero-card">
+          <div className="hero-icon-badge">
             <i className="bi bi-shield-check" style={{ fontSize: "2rem", color: "#fff" }}></i>
           </div>
 

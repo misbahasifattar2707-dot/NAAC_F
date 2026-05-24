@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react";
 import Sidebar from "../../components/Sidebar";
 import Footer from "../../components/Footer";
+import { CriterionProofFileSection } from "../../components/criteria/CriterionProofSection";
 import { getRecords, addRecord, deleteRecord, updateRecord, getExcelExportUrl, uploadEvidence } from "../../api/apiService";
 
 import DynamicStudentSelect from "../../components/DynamicStudentSelect";
@@ -64,7 +65,7 @@ export default function Criterion1_3_3() {
     const res = await uploadEvidence("1_3_3", proofFiles);
     setUploadingProof(false);
     if (res.success) {
-        setForm({ ...form, docLink: "http://localhost:5000" + res.link, pdfPath: res.link });
+        setForm({ ...form, docLink: res.link, pdfPath: res.link });
         showAlert("Proof files uploaded and combined into PDF successfully!", "success");
     } else {
         showAlert("Upload failed: " + res.error, "danger");
@@ -252,6 +253,7 @@ export default function Criterion1_3_3() {
           </div>
         )}
 
+                  <CriterionProofFileSection criterionKey="1_3_3" />
         <Footer />
       </div>
     </div>

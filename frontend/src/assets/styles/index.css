@@ -245,3 +245,224 @@ body {
 .sidebar::-webkit-scrollbar { width: 4px; }
 .sidebar::-webkit-scrollbar-track { background: transparent; }
 .sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+
+/* ---- REUSABLE SHELLS ---- */
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f4f6f9;
+}
+
+.home-hero {
+  background: linear-gradient(135deg, #1a1a2e 0%, #dc3545 100%);
+  padding: 2.5rem 2rem;
+  text-align: center;
+  color: #fff;
+}
+
+.home-title {
+  font-family: "DM Serif Display", serif;
+  font-size: 2rem;
+  font-weight: 400;
+  letter-spacing: 2px;
+  margin-bottom: 0.3rem;
+}
+
+.home-subtitle {
+  font-size: 1.3rem;
+  font-weight: 400;
+  opacity: 0.85;
+  margin-bottom: 0.2rem;
+}
+
+.home-location {
+  opacity: 0.65;
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.home-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+}
+
+.hero-card {
+  max-width: 640px;
+  width: 100%;
+  border-radius: 20px;
+}
+
+.hero-icon-badge {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #dc3545, #c0392b);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1.5rem;
+  box-shadow: 0 8px 24px rgba(220, 53, 69, 0.3);
+}
+
+.auth-shell {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+}
+
+.auth-sidebar {
+  width: 260px;
+  min-width: 260px;
+  background: #1a1a2e;
+  color: #fff;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 2rem 0;
+  flex-shrink: 0;
+}
+
+.auth-brand {
+  padding: 0 1.5rem 2rem;
+  font-family: "DM Serif Display", serif;
+  font-size: 1.6rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  letter-spacing: 3px;
+}
+
+.auth-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  overflow: auto;
+}
+
+.auth-header {
+  padding: 1.5rem 2rem;
+  background: #fff;
+  border-bottom: 1px solid #e9ecef;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  flex-shrink: 0;
+}
+
+.auth-center {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.auth-card {
+  max-width: 440px;
+  width: 100%;
+  border-radius: 20px;
+}
+
+.auth-icon-badge {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: #dc3545;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1rem;
+}
+
+.dashboard-card {
+  border-radius: 16px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.dashboard-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.college-footer-bar {
+  background: linear-gradient(135deg, #1a1a2e, #dc3545);
+  padding: 1.5rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.college-footer-title {
+  color: #fff;
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: 1px;
+}
+
+.college-footer-subtitle {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.82rem;
+}
+
+.college-footer-meta {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.75rem;
+}
+
+/* ---- RESPONSIVE ---- */
+@media (max-width: 991px) {
+  .sidebar {
+    position: static;
+    width: 100%;
+    min-height: auto;
+    max-height: 320px;
+  }
+
+  .main-content {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .app-layout {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 768px) {
+  .home-hero {
+    padding: 2rem 1rem;
+  }
+
+  .home-title {
+    font-size: 1.6rem;
+    letter-spacing: 1px;
+  }
+
+  .auth-shell {
+    flex-direction: column;
+  }
+
+  .auth-sidebar {
+    width: 100%;
+    min-width: 100%;
+    min-height: auto;
+    padding: 1rem 0;
+  }
+
+  .auth-header,
+  .auth-center,
+  .college-footer-bar {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .page-header {
+    padding: 1rem;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+}

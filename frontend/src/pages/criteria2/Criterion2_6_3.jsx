@@ -3,22 +3,23 @@
 // Year and program name dropdowns fetched from backend
 // ============================================================
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import Sidebar from "../../components/Sidebar";
 import Footer from "../../components/Footer";
-import { getAcademicYears, getProgrammes, getRecords, addRecord, deleteRecord } from "../../api/apiService";
+import { getAcademicYears, getProgrammes, getRecords, addRecord, deleteRecord, getExcelExportUrl } from "../../api/apiService";
+import { CriterionProofFileSection } from "../../components/criteria/CriterionProofSection";
+import { DropdownWithAddMore } from "../../components/forms";
+import { programmeDisplayLabel } from "../../utils/programmeDisplay";
+import { getSessionYear } from "../../utils/session";
 
-const emptyForm = () => ({ year: "", program_code: "", program_name: "", appeared_count: "", passed_count: "" });
+const emptyForm = () => ({ year: getSessionYear(), program_code: "", program_name: "", appeared_count: "", passed_count: "" });
 
 export default function Criterion2_6_3() {
-  const navigate = useNavigate();
   const [form, setForm] = useState(emptyForm());
   const [records, setRecords] = useState([]);
   const [yearOptions, setYearOptions] = useState([]);
   const [programmeOptions, setProgrammeOptions] = useState([]);
   const [alert, setAlert] = useState(null);
   const [loading, setLoading] = useState(true);
-
   useEffect(() => {
     Promise.all([
       getAcademicYears(),
@@ -40,11 +41,11 @@ export default function Criterion2_6_3() {
 
   // When a programme is selected from dropdown, auto-fill code + name
   const handleProgrammeSelect = (val) => {
-    const prog = programmeOptions.find(p => p.code === val);
-    setForm(f => ({
+    const prog = programmeOptions.find((p) => p.code === val);
+    setForm((f) => ({
       ...f,
       program_code: prog ? prog.code : val,
-      program_name: prog ? prog.name : "",
+      program_name: prog ? programmeDisplayLabel(prog) : "",
     }));
   };
 
@@ -53,15 +54,22 @@ export default function Criterion2_6_3() {
     if (!year || !program_code || !program_name || !appeared_count || !passed_count) {
       return showAlert("Please fill all fields.", "danger");
     }
-    const result = await addRecord("2_6_3", {
-      ...form,
-      appeared_count: parseInt(appeared_count),
-      passed_count: parseInt(passed_count),
-    });
+    try {
+      const payload = {
+        ...form,
+        appeared_count: parseInt(appeared_count),
+        passed_count: parseInt(passed_count),
+      };
+      const result = await addRecord("2_6_3", payload);
     if (result.success) {
       setRecords(prev => [...prev, result.data]);
       setForm(emptyForm());
       showAlert("Pass percentage record saved!");
+    } else {
+      showAlert(result.error || "Could not save.", "danger");
+    }
+    } catch (err) {
+      showAlert(err.message || "Save failed.", "danger");
     }
   };
 
@@ -86,7 +94,7 @@ export default function Criterion2_6_3() {
             <p className="text-muted mb-0" style={{ fontSize: "0.78rem", textTransform: "uppercase", letterSpacing: 1 }}>Criteria 2</p>
             <h4>2.6.3: Pass Percentage of Students</h4>
           </div>
-          <button className="btn btn-success btn-sm fw-semibold" onClick={() => navigate("/export/2-6-3")}>
+          <button className="btn btn-success btn-sm fw-semibold" onClick={() => { window.location.href = '/api/export-excel/2_6_3'; }}>
             <i className="bi bi-file-earmark-excel me-1"></i> Export Excel
           </button>
         </header>
@@ -111,18 +119,39 @@ export default function Criterion2_6_3() {
               ) : (
                 <div className="row g-3 align-items-end">
                   <div className="col-md-2">
-                    <label className="form-label-custom">Academic Year</label>
-                    <select className="form-select" value={form.year} onChange={e => handleChange("year", e.target.value)}>
-                      <option value="">Select Year</option>
-                      {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
-                    </select>
+                    <DropdownWithAddMore
+                      label="Academic Year"
+                      selectClassName="form-select"
+                      value={form.year}
+                      onChange={(v) => handleChange("year", v)}
+                      options={yearOptions.map((y) => ({ value: y, label: y }))}
+                      optionValue={(o) => o.value}
+                      optionLabel={(o) => o.label}
+                      placeholder="Select Year"
+                      addMoreMode="lookup"
+                      lookupKey="academic-years"
+                      onAfterAdd={() =>
+                        getAcademicYears().then((ys) => setYearOptions(ys || []))
+                      }
+                    />
                   </div>
                   <div className="col-md-2">
-                    <label className="form-label-custom">Program</label>
-                    <select className="form-select" value={form.program_code} onChange={e => handleProgrammeSelect(e.target.value)}>
-                      <option value="">Select Program</option>
-                      {programmeOptions.map(p => <option key={p.code} value={p.code}>{p.code}</option>)}
-                    </select>
+                    <DropdownWithAddMore
+                      label="Program"
+                      selectClassName="form-select"
+                      value={form.program_code}
+                      onChange={(v) => handleProgrammeSelect(v)}
+                      options={programmeOptions}
+                      optionValue={(p) => p.code}
+                      optionLabel={(p) => `${p.code} — ${programmeDisplayLabel(p)}`}
+                      placeholder="Select Program"
+                      addMoreMode="programme"
+                      programmeCollectDepartment
+                      programmeValueField="code"
+                      onAfterAdd={() =>
+                        getProgrammes().then((progs) => setProgrammeOptions(progs || []))
+                      }
+                    />
                   </div>
                   <div className="col-md-3">
                     <label className="form-label-custom">Program Name</label>
@@ -193,7 +222,8 @@ export default function Criterion2_6_3() {
             </div>
           </div>
         </div>
-        <Footer />
+          <CriterionProofFileSection criterionKey="2_6_3" />
+          <Footer />
       </div>
     </div>
   );

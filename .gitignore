@@ -1,0 +1,49 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Environment & secrets
+.env
+.env.local
+*.pem
+
+# Database / local instance
+backend/instance/*.db
+instance/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Build output is committed for single-URL deploy; uncomment to ignore:
+# backend/static/assets/
+# backend/static/index.html
+
+# Logs & OS junk
+debug.log
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
+Open Notebook.onetoc2
+**/*Open Notebook.onetoc2
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Reference / local-only (not part of submission)
+naac-accrediation-system-main/
+students list.pdf
+static/
+instance/
+debug.log

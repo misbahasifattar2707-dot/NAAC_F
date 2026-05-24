@@ -1,63 +1,147 @@
-# NAAC Project Reorganization
+# METtrack — NAAC Accreditation Portal
 
-This project has been restructured into a clean and professional folder structure following industry best practices.
+Full-stack web application for **NAAC Criteria 1–6** data entry, proof upload, and Excel export.
 
-## Folder Structure
+| Layer | Stack |
+|-------|--------|
+| **Frontend** | React 18, Vite, React Router, Bootstrap 5 |
+| **Backend** | Flask, SQLAlchemy, PostgreSQL |
+| **Deploy** | React build served from `backend/static/` by Flask |
+
+---
+
+## Project structure (submission layout)
 
 ```text
-.
-├── backend/                # Flask Backend
-│   ├── models/             # SQLAlchemy Models
-│   │   ├── __init__.py
-│   │   └── models.py
-│   ├── routes/             # API and UI Routes (Blueprints)
-│   │   ├── __init__.py
-│   │   ├── api_routes.py
-│   │   └── routes.py
-│   ├── scripts/            # Database Migrations and Seed Scripts
-│   │   ├── __init__.py
-│   │   ├── init_db.py
-│   │   ├── seeds.py
-│   │   └── migrate_*.py
-│   ├── docs/               # Project Documentation and DB Diagrams
-│   ├── static/             # React Build Output (CSS, JS, Images)
-│   ├── templates/          # React Entry Point (index.html)
-│   ├── instance/           # Local Database / Instance Files
-│   ├── app.py              # Application Entry Point
-│   ├── extensions.py       # Shared Extensions (db, bcrypt)
-│   ├── config.py           # Configuration Settings
-│   └── requirements.txt    # Python Dependencies
-├── frontend/               # React Frontend Source
+METtrack-NAAC/
+├── frontend/                 # React source (edit UI here)
 │   ├── src/
-│   │   ├── assets/         # Static Assets (Styles, Images)
-│   │   │   ├── styles/
-│   │   │   └── images/
-│   │   ├── api/            # API Service Layer
-│   │   ├── components/     # Reusable React Components
-│   │   ├── pages/          # Page Components
-│   │   ├── App.jsx
+│   │   ├── api/              # API client (apiService.js)
+│   │   ├── components/       # Sidebar, Footer, proof widgets
+│   │   ├── hooks/            # useCriterionProof
+│   │   ├── pages/            # Criteria 1–6 screens
+│   │   │   ├── criteria1/    # 6 pages
+│   │   │   ├── criteria2/    # 9 pages
+│   │   │   ├── criteria3/    # 10 pages
+│   │   │   ├── criteria4/    # 3 pages
+│   │   │   ├── criteria5/    # 8 pages
+│   │   │   └── criteria6/    # 6 pages
+│   │   ├── utils/
+│   │   ├── App.jsx           # Routes
 │   │   └── main.jsx
-│   ├── public/             # Public Assets
-│   ├── package.json        # Frontend Dependencies and Scripts
-│   └── vite.config.js      # Vite Configuration
-└── README.md               # This file
+│   ├── package.json
+│   └── vite.config.js        # Builds → ../backend/static
+│
+├── backend/                  # Flask API + serves built React app
+│   ├── app.py                # Entry point
+│   ├── extensions.py         # db, bcrypt
+│   ├── models/models.py      # All DB tables (C1–C6)
+│   ├── routes/
+│   │   ├── api_routes.py     # REST API + Excel export
+│   │   ├── criteria346_merge.py  # Criteria 3–6 helpers
+│   │   └── routes.py         # Legacy HTML routes (optional)
+│   ├── scripts/
+│   │   ├── setup_merged_project.py  # First-time DB + seeds
+│   │   ├── init_db.py
+│   │   └── seeds.py
+│   ├── static/               # Production frontend build + uploads
+│   └── requirements.txt
+│
+├── setup.bat                 # First-time install (Windows)
+├── start-app.bat             # Build + run single URL (port 5000)
+├── run-project.bat           # Dev: backend + Vite (ports 5000 + 5174)
+├── .env.example
+└── README.md
 ```
 
-## How to Run
+> **Note:** `naac-accrediation-system-main/` is the original team reference folder used during merge. The runnable project is **`frontend/` + `backend/`** only.
+
+---
+
+## Prerequisites
+
+- **Python 3.11+**
+- **Node.js 18+** and npm
+- **PostgreSQL** with database `naac_db` created
+- Default DB URL: `postgresql://postgres:root@localhost/naac_db`
+
+---
+
+## Quick start (Windows)
+
+### 1. First-time setup
+
+```bat
+setup.bat
+```
+
+This creates a virtual environment, installs Python/npm dependencies, initializes the database, and builds the frontend.
+
+### 2. Run the application
+
+**Option A — Single URL (recommended for demo/submission):**
+
+```bat
+start-app.bat
+```
+
+Opens **http://localhost:5000** (Flask serves API + React).
+
+**Option B — Development (hot reload on frontend):**
+
+```bat
+run-project.bat
+```
+
+- Backend: http://localhost:5000  
+- Frontend: http://localhost:5174 (proxies `/api` to backend)
+
+---
+
+## Manual setup
 
 ### Backend
-1. Navigate to the `backend` folder.
-2. Install dependencies: `pip install -r requirements.txt`.
-3. Run the application: `python app.py`.
+
+```powershell
+cd backend
+python -m venv ..\.venv
+..\.venv\Scripts\pip install -r requirements.txt
+..\.venv\Scripts\python scripts\setup_merged_project.py
+..\.venv\Scripts\python app.py
+```
 
 ### Frontend
-1. Navigate to the `frontend` folder.
-2. Install dependencies: `npm install`.
-3. Run in development mode: `npm run dev`.
-4. Build for production: `npm run build`.
 
-## Improvements & Optimization
-- **Separation of Concerns**: Models and Routes are now in their own subfolders, making the codebase more maintainable.
-- **Asset Organization**: Frontend assets are properly categorized under `src/assets`.
-- **Package Initialization**: Added `__init__.py` files to ensure subdirectories are treated as Python packages.
-- **Clean Root**: The project root is now clean, containing only the main `frontend` and `backend` directories.
+```powershell
+cd frontend
+npm install
+npm run build          # output → backend/static/
+npm run dev            # optional dev server
+```
+
+---
+
+## Features
+
+- **Criteria 1–6** — 42 metric pages with CRUD APIs
+- **Criterion proof** — upload/combine PDFs → Excel proof column on every export
+- **Excel export** — NAAC-style sheets with merged Document / Proof Link column
+- **Role-based login** — department/program session context
+
+---
+
+## Default login
+
+Use credentials configured in your database (`user_lookup` table). Register via `/register` if seeds include an admin user.
+
+---
+
+## Team
+
+Merged project: **Criteria 1 & 2** (original) + **Criteria 3–6** (team integration).
+
+---
+
+## License
+
+Academic / institutional use — MET Bhujbal Knowledge City, Nashik.

@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify, send_file
-from ..extensions import db, bcrypt
-from ..models.models import *
+from extensions import db, bcrypt
+from models.models import *
 import os, io, requests as req_lib
 from pypdf import PdfWriter, PdfReader
 from openpyxl import Workbook, load_workbook
@@ -8,6 +8,86 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 main = Blueprint('main', __name__)
+
+
+def _synthetic_enrollment(name, admission_year, seq):
+    """Unique enrollment when Excel has name only (student_lookup.enrollment_number is NOT NULL)."""
+    import re
+    yr = re.sub(r'[^0-9-]', '', (admission_year or '0000'))[:12] or '0000'
+    slug = re.sub(r'[^a-z0-9]', '', (name or '').lower())[:24] or 'student'
+    base = f"NAAC-{yr}-{int(seq):04d}-{slug}"
+    return base[:100]
+
+
+def _unique_synthetic_enrollment(name, admission_year, start_seq=1):
+    seq = start_seq
+    while True:
+        enr = _synthetic_enrollment(name, admission_year, seq)
+        if not Student.query.filter_by(enrollment_number=enr).first():
+            return enr
+        seq += 1
+
+
+def _find_student_for_upload(name, enrollment, admission_year):
+    """Match existing row by enrollment, else by name + admission year."""
+    nm = (name or '').strip()
+    enr = (enrollment or '').strip()
+    if enr and enr.lower() != 'none':
+        return Student.query.filter_by(enrollment_number=enr).first()
+    if nm and admission_year:
+        return Student.query.filter(
+            db.func.lower(Student.name) == nm.lower(),
+            Student.admission_year == admission_year,
+        ).first()
+    if nm:
+        return Student.query.filter(db.func.lower(Student.name) == nm.lower()).first()
+    return None
+
+
+def _clear_all_students():
+    """Remove all student_lookup rows (null or delete dependent criterion rows)."""
+    C132Experiential.query.update({C132Experiential.student_id: None}, synchronize_session=False)
+    C133Projects.query.update({C133Projects.student_id: None}, synchronize_session=False)
+    C531SportsAwards.query.update({C531SportsAwards.student_id: None}, synchronize_session=False)
+    C23OutgoingStudents.query.delete(synchronize_session=False)
+    C521Placements.query.delete(synchronize_session=False)
+    C522HigherEd.query.delete(synchronize_session=False)
+    C523QualifyingExams.query.delete(synchronize_session=False)
+    C533SportsEvents.query.delete(synchronize_session=False)
+    deleted = Student.query.delete(synchronize_session=False)
+    db.session.commit()
+    return deleted
+
+
+def _normalize_admission_year(val):
+    """Normalize Excel/UI year labels to a consistent form (e.g. 2024-25)."""
+    s = str(val or "").strip().replace("–", "-").replace("/", "-")
+    if not s or s.lower() == "none":
+        return None
+    if len(s) == 4 and s.isdigit():
+        y = int(s)
+        return f"{y}-{str(y + 1)[-2:]}"
+    if len(s) == 9 and s[4] == "-" and s[:4].isdigit() and s[5:].isdigit():
+        y1, y2 = int(s[:4]), int(s[5:])
+        return f"{y1}-{str(y2)[-2:]}"
+    return s
+
+
+def _admission_year_match_filters(query, admission_year):
+    """Match admission year with normalization and include untagged rows if no exact match."""
+    norm = _normalize_admission_year(admission_year)
+    labels = {admission_year.strip(), norm}
+    if norm and len(norm) >= 4:
+        labels.add(norm[:4])
+    exact = query.filter(Student.admission_year.in_(list(labels))).order_by(Student.name).all()
+    if exact:
+        return exact
+    # Students uploaded before Admission Year column existed
+    untagged = query.filter(
+        (Student.admission_year.is_(None)) | (Student.admission_year == "")
+    ).order_by(Student.name).all()
+    return untagged
+
 
 # ==================== ROLE MAP ====================
 
@@ -115,24 +195,65 @@ def add_addon_subject():
         return jsonify({'success': True, 'id': subj.id, 'name': subj.name})
     return jsonify({'success': False}), 400
 
+@main.route('/api/students/all', methods=['DELETE'])
+def delete_all_students():
+    """Clear entire student master list (for fresh name-only re-upload)."""
+    try:
+        n = _clear_all_students()
+        return jsonify({'success': True, 'deleted': n, 'message': f'Deleted {n} student(s). You can upload again.'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
 @main.route('/api/students', methods=['GET'])
 def get_students():
-    students = Student.query.all()
+    course_code = (request.args.get('course_code') or '').strip()
+    admission_year = (request.args.get('admission_year') or '').strip()
+    q = Student.query
+    if course_code:
+        q = q.filter(Student.experiential_course_code == course_code)
+    if admission_year:
+        students = _admission_year_match_filters(q, admission_year)
+    else:
+        students = q.order_by(Student.name).all()
     return jsonify([{
         'id': s.id, 
         'name': s.name, 
         'enrollment_number': s.enrollment_number, 
-        'program_code': s.program_code,
+        'program_code': (Program.query.get(s.program_id).program_code if s.program_id else None),
+        'course_code': s.experiential_course_code,
+        'course_name': getattr(s, 'experiential_course_name', None),
+        'admission_year': s.admission_year,
         'category': s.category
     } for s in students])
+
+
+@main.route('/api/students/apply-admission-year', methods=['POST'])
+def apply_admission_year_bulk():
+    """Tag students missing admission_year (e.g. after upload without that column)."""
+    data = request.json or {}
+    year = _normalize_admission_year(data.get('admission_year'))
+    if not year:
+        return jsonify({'success': False, 'message': 'admission_year is required'}), 400
+    rows = Student.query.filter(
+        (Student.admission_year.is_(None)) | (Student.admission_year == '')
+    ).all()
+    for s in rows:
+        s.admission_year = year
+    db.session.commit()
+    return jsonify({'success': True, 'updated': len(rows), 'admission_year': year})
+
 
 @main.route('/api/students', methods=['POST'])
 def add_student():
     data = request.json
     name = data.get('name')
     enrollment_number = data.get('enrollment_number')
-    program_code = data.get('program_code')
+    program_code = (data.get('program_code') or '').strip()
     category = data.get('category')
+    course_code = (data.get('course_code') or '').strip() or None
+    admission_year = (data.get('admission_year') or '').strip() or None
     
     if not name:
         return jsonify({'success': False, 'message': 'Name is required'}), 400
@@ -143,11 +264,21 @@ def add_student():
             return jsonify({'success': False, 'message': 'Student with this enrollment number already exists'}), 400
             
     try:
+        prog_id = None
+        if program_code:
+            p = Program.query.filter_by(program_code=program_code).first()
+            if p:
+                prog_id = p.id
+        enr = (enrollment_number or '').strip()
+        if not enr:
+            enr = _unique_synthetic_enrollment(name, admission_year)
         new_student = Student(
             name=name,
-            enrollment_number=enrollment_number,
-            program_code=program_code,
-            category=category
+            enrollment_number=enr,
+            program_id=prog_id,
+            category=category,
+            admission_year=admission_year,
+            experiential_course_code=course_code,
         )
         db.session.add(new_student)
         db.session.commit()
@@ -157,7 +288,9 @@ def add_student():
                 'id': new_student.id, 
                 'name': new_student.name, 
                 'enrollment_number': new_student.enrollment_number, 
-                'program_code': new_student.program_code,
+                'program_code': program_code or None,
+                'course_code': new_student.experiential_course_code,
+                'admission_year': new_student.admission_year,
                 'category': new_student.category
             }
         })
@@ -173,48 +306,235 @@ def upload_students():
     if file.filename == '':
         return jsonify({'success': False, 'message': 'No selected file'}), 400
         
-    if file and file.filename.endswith('.xlsx'):
+    def _norm_header(h):
+        return ''.join(ch for ch in str(h or '').strip().lower() if ch.isalnum())
+
+    def _clean_cell_code(val):
+        """Normalize Excel course/subject codes (handles 310916001.0 floats)."""
+        if val is None:
+            return None
+        if isinstance(val, float) and val == int(val):
+            val = int(val)
+        s = str(val).strip()
+        if not s or s.lower() == 'none':
+            return None
+        if s.endswith('.0') and s[:-2].isdigit():
+            s = s[:-2]
+        return s
+
+    def _pick(headers_norm, preds, default=-1):
+        for i, h in enumerate(headers_norm):
+            if any(p(h) for p in preds):
+                return i
+        return default
+
+    if file and (file.filename.endswith('.xlsx') or file.filename.endswith('.xls') or file.filename.endswith('.csv')):
         try:
-            wb = load_workbook(file, data_only=True)
-            ws = wb.active
+            if file.filename.endswith('.csv'):
+                import pandas as pd
+                df = pd.read_csv(file)
+                rows = [list(df.columns)] + df.fillna('').values.tolist()
+            else:
+                wb = load_workbook(file, data_only=True)
+                ws = wb.active
+                rows = [[cell for cell in row] for row in ws.iter_rows(values_only=True)]
+
+            if not rows or len(rows) < 2:
+                return jsonify({'success': False, 'message': 'File appears empty'}), 400
+
             students_added = 0
+            students_updated = 0
+            students_skipped = 0
             
             # Extract headers from first row
-            headers = [cell.value for cell in ws[1]]
-            name_idx = next((i for i, h in enumerate(headers) if h and 'name' in str(h).lower()), 0)
-            enroll_idx = next((i for i, h in enumerate(headers) if h and 'enroll' in str(h).lower() or h and 'prn' in str(h).lower()), -1)
-            prog_idx = next((i for i, h in enumerate(headers) if h and 'program' in str(h).lower()), -1)
-            cat_idx = next((i for i, h in enumerate(headers) if h and 'category' in str(h).lower()), -1)
-            
-            for row in ws.iter_rows(min_row=2, values_only=True):
+            headers = [str(h or '').strip() for h in rows[0]]
+            hn = [_norm_header(h) for h in headers]
+
+            name_idx = _pick(
+                hn,
+                [
+                    lambda h: h in ('name', 'studentname', 'fullname', 'studentfullname'),
+                    lambda h: 'student' in h and 'name' in h and 'program' not in h,
+                    lambda h: h.endswith('name') and 'program' not in h and 'course' not in h and 'enroll' not in h,
+                ],
+                -1,
+            )
+            if name_idx < 0 and len(hn) == 1:
+                name_idx = 0
+            if name_idx < 0:
+                return jsonify({
+                    'success': False,
+                    'message': f'Could not find a Name column. Headers found: {headers}',
+                }), 400
+            enroll_idx = _pick(
+                hn,
+                [
+                    lambda h: 'enroll' in h and 'name' not in h,
+                    lambda h: 'prn' in h,
+                    lambda h: h in ('rollno', 'rollnumber'),
+                ],
+            )
+            prog_idx = _pick(
+                hn,
+                [
+                    lambda h: h in ('programcode', 'programmecode', 'progcode'),
+                    lambda h: ('program' in h or 'programme' in h) and 'code' in h,
+                    lambda h: h in ('program', 'programme', 'prog') and 'name' not in h,
+                ],
+            )
+            course_idx = _pick(
+                hn,
+                [
+                    lambda h: h in ('coursecode', 'subjectcode', 'uniquecoursecode', 'projectcode', 'papercode'),
+                    lambda h: ('course' in h or 'subject' in h or 'project' in h) and 'code' in h,
+                    lambda h: h == 'code' and 'program' not in h,
+                ],
+            )
+            course_name_idx = _pick(
+                hn,
+                [
+                    lambda h: 'coursename' in h,
+                    lambda h: ('course' in h and 'name' in h and 'code' not in h),
+                    lambda h: 'experiential' in h and 'name' in h,
+                    lambda h: h == 'subject',
+                ],
+            )
+            adm_year_idx = _pick(
+                hn,
+                [
+                    lambda h: 'admissionyear' in h,
+                    lambda h: 'yearofadmission' in h,
+                    lambda h: 'admission' in h and 'year' in h,
+                    lambda h: h in ('batch', 'batchyear', 'admyear'),
+                    lambda h: h == 'year' and 'offering' not in h,
+                ],
+            )
+            if adm_year_idx < 0:
+                adm_year_idx = _pick(hn, [lambda h: 'academicyear' in h])
+            cat_idx = _pick(hn, [lambda h: 'category' in h, lambda h: 'caste' in h])
+
+            default_adm = _normalize_admission_year(request.form.get('default_admission_year'))
+            synthetic_seq = 0
+            auto_enrollment_count = 0
+            file_names = []
+
+            for row in rows[1:]:
                 name = row[name_idx] if name_idx >= 0 and name_idx < len(row) else None
                 if not name or not str(name).strip() or str(name).strip().lower() == 'none':
                     continue
-                
-                enrollment = str(row[enroll_idx]).strip() if enroll_idx >= 0 and enroll_idx < len(row) and row[enroll_idx] is not None else None
+
+                name_clean = str(name).strip()
+                file_names.append(name_clean)
+
+                enrollment = None
+                if enroll_idx >= 0 and enroll_idx < len(row) and row[enroll_idx] is not None:
+                    raw_en = row[enroll_idx]
+                    if isinstance(raw_en, float) and str(raw_en) == 'nan':
+                        enrollment = None
+                    else:
+                        enrollment = str(raw_en).strip()
+                if enrollment and enrollment.lower() in ('none', 'nan', 'null', 'n/a', '-', ''):
+                    enrollment = None
                 prog = str(row[prog_idx]).strip() if prog_idx >= 0 and prog_idx < len(row) and row[prog_idx] is not None else None
+                course_code = (
+                    _clean_cell_code(row[course_idx])
+                    if course_idx >= 0 and course_idx < len(row)
+                    else None
+                )
+                course_name = str(row[course_name_idx]).strip() if course_name_idx >= 0 and course_name_idx < len(row) and row[course_name_idx] is not None else None
+                admission_year = str(row[adm_year_idx]).strip() if adm_year_idx >= 0 and adm_year_idx < len(row) and row[adm_year_idx] is not None else None
+                admission_year = _normalize_admission_year(admission_year) or default_adm
                 category = str(row[cat_idx]).strip() if cat_idx >= 0 and cat_idx < len(row) and row[cat_idx] is not None else None
-                
-                if enrollment and enrollment.lower() != 'none':
-                    existing = Student.query.filter_by(enrollment_number=enrollment).first()
-                    if existing:
-                        continue
-                
+
+                existing = _find_student_for_upload(name_clean, enrollment, admission_year)
+                if existing:
+                    changed = False
+                    if prog and prog.lower() != 'none':
+                        p = Program.query.filter_by(program_code=prog).first()
+                        if p and existing.program_id != p.id:
+                            existing.program_id = p.id
+                            changed = True
+                    if category and category.lower() != 'none':
+                        if existing.category != category:
+                            existing.category = category
+                            changed = True
+                    if course_code and existing.experiential_course_code != course_code:
+                        existing.experiential_course_code = course_code
+                        changed = True
+                    if course_name and course_name.lower() != 'none' and getattr(existing, 'experiential_course_name', None) != course_name:
+                        existing.experiential_course_name = course_name
+                        changed = True
+                    if admission_year and existing.admission_year != admission_year:
+                        existing.admission_year = admission_year
+                        changed = True
+                    if changed:
+                        students_updated += 1
+                    else:
+                        students_skipped += 1
+                    continue
+
+                if not enrollment:
+                    synthetic_seq += 1
+                    enrollment = _unique_synthetic_enrollment(name_clean, admission_year, synthetic_seq)
+                    auto_enrollment_count += 1
+
+                if not enrollment:
+                    continue
+
+                prog_id = None
+                if prog and prog.lower() != 'none':
+                    p = Program.query.filter_by(program_code=prog).first()
+                    if p:
+                        prog_id = p.id
+
                 db.session.add(Student(
-                    name=str(name).strip(),
-                    enrollment_number=enrollment if enrollment and enrollment.lower() != 'none' else None,
-                    program_code=prog if prog and prog.lower() != 'none' else None,
+                    name=name_clean,
+                    enrollment_number=str(enrollment).strip(),
+                    program_id=prog_id,
+                    admission_year=admission_year if admission_year and admission_year.lower() != 'none' else None,
+                    experiential_course_code=course_code if course_code and course_code.lower() != 'none' else None,
+                    experiential_course_name=course_name if course_name and course_name.lower() != 'none' else None,
                     category=category if category and category.lower() != 'none' else None
                 ))
                 students_added += 1
                 
             db.session.commit()
-            return jsonify({'success': True, 'added': students_added, 'message': f'Successfully added {students_added} students'})
+            course_col = headers[course_idx] if 0 <= course_idx < len(headers) else None
+            msg = (
+                f'Upload complete: added {students_added}, '
+                f'updated {students_updated}, skipped existing {students_skipped}.'
+            )
+            if auto_enrollment_count:
+                msg += (
+                    f' {auto_enrollment_count} row(s) had no enrollment — auto IDs like NAAC-2024-25-0001 were created.'
+                )
+            if course_idx < 0:
+                msg += (
+                    ' Warning: no Course Code column was detected — re-upload with a '
+                    '"Course Code" (or "Subject Code") column so students can be added to 1.3.2.'
+                )
+            with_codes = Student.query.filter(
+                Student.experiential_course_code.isnot(None),
+                Student.experiential_course_code != '',
+            ).count()
+            if course_idx >= 0 and with_codes == 0 and (students_added + students_updated) > 0:
+                msg += ' Warning: Course Code column was found but no codes were saved — check that cells are not empty.'
+            return jsonify({
+                'success': True,
+                'added': students_added,
+                'updated': students_updated,
+                'skipped': students_skipped,
+                'file_names': file_names,
+                'headers_seen': headers,
+                'course_code_column': course_col,
+                'course_code_column_detected': course_idx >= 0,
+                'message': msg,
+            })
         except Exception as e:
             db.session.rollback()
             return jsonify({'success': False, 'message': str(e)}), 500
     else:
-        return jsonify({'success': False, 'message': 'Please upload a valid .xlsx file'}), 400
+        return jsonify({'success': False, 'message': 'Please upload a valid .xlsx, .xls or .csv file'}), 400
 
 # ==================== CRITERIA 1.1 ====================
 

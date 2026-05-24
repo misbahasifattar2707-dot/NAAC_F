@@ -19,7 +19,7 @@ export default function Register() {
     setSuccess("");
 
     try {
-      const res = await fetch("http://localhost:5000/api/register", {
+      const res = await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -46,14 +46,10 @@ export default function Register() {
   const roles = ["Super Admin", "Admin", "Staff"];
 
   return (
-    <div className="app-layout" style={{ minHeight: "100vh", width: "100vw" }}>
+    <div className="auth-shell">
       {/* Left sidebar */}
-      <div style={{
-        width: 260, minWidth: 260, background: "#1a1a2e", color: "#fff",
-        minHeight: "100vh", display: "flex", flexDirection: "column", padding: "2rem 0",
-        flexShrink: 0,
-      }}>
-        <div style={{ padding: "0 1.5rem 2rem", fontFamily: "'DM Serif Display',serif", fontSize: "1.6rem", borderBottom: "1px solid rgba(255,255,255,0.1)", letterSpacing: 3 }}>
+      <div className="auth-sidebar">
+        <div className="auth-brand">
           MET<span style={{ color: "#dc3545" }}>track</span>
         </div>
         <nav style={{ padding: "1rem 0" }}>
@@ -67,19 +63,15 @@ export default function Register() {
       </div>
 
       {/* Main content */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh", overflow: "auto" }}>
-        <header style={{ padding: "1.5rem 2rem", background: "#fff", borderBottom: "1px solid #e9ecef", boxShadow: "0 2px 8px rgba(0,0,0,0.05)", flexShrink: 0 }}>
+      <div className="auth-main">
+        <header className="auth-header">
           <h4 style={{ color: "#dc3545", fontWeight: 700, margin: 0 }}>Create a new account</h4>
         </header>
 
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem" }}>
-          <div className="card border-0 shadow-lg p-5 fade-in" style={{ maxWidth: 440, width: "100%", borderRadius: 20 }}>
+        <div className="auth-center">
+          <div className="card border-0 shadow-lg p-5 fade-in auth-card">
             <div className="text-center mb-4">
-              <div style={{
-                width: 70, height: 70, borderRadius: "50%",
-                background: "#dc3545", display: "flex", alignItems: "center",
-                justifyContent: "center", margin: "0 auto 1rem"
-              }}>
+              <div className="auth-icon-badge">
                 <i className="bi bi-person-plus-fill" style={{ fontSize: "1.8rem", color: "#fff" }}></i>
               </div>
               <h3 className="fw-bold">Register</h3>

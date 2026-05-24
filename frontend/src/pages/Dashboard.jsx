@@ -23,7 +23,27 @@ const CRITERIA_GROUPS = [
       { label: "2.1.1", path: "/criteria2/2-1-1", color: "#e11d48", icon: "bi-journal-text",   desc: "Enrolment Number"         },
       { label: "2.2",   path: "/criteria2/2-2",   color: "#0369a1", icon: "bi-shield-check",   desc: "Reserved Category Seats"  },
       { label: "2.1.2", path: "/criteria2/2-1-2", color: "#059669", icon: "bi-bar-chart-fill", desc: "Seats vs Admitted"        },
-      { label: "2.3",   path: "/criteria2/2-3",   color: "#7c3aed", icon: "bi-box-arrow-right","desc": "Outgoing Students"      },
+      { label: "2.3",   path: "/criteria2/2-3",   color: "#7c3aed", icon: "bi-box-arrow-right", desc: "Outgoing Students"       },
+      { label: "2.3.3", path: "/criteria2/2-3-3", color: "#be123c", icon: "bi-person-lines-fill", desc: "Mentor-Mentee Ratio"    },
+      { label: "2.4.1", path: "/criteria2/2-4-1", color: "#0891b2", icon: "bi-person-badge",   desc: "Full-time Teachers"       },
+      { label: "2.4.2", path: "/criteria2/2-4-2", color: "#0d9488", icon: "bi-award-fill",     desc: "Teachers with Ph.D./NET"  },
+      { label: "2.6.3", path: "/criteria2/2-6-3", color: "#d97706", icon: "bi-graph-up-arrow", desc: "Pass Percentage"          },
+    ],
+  },
+  {
+    key: "3", label: "Criteria 3", subtitle: "Research, Innovations and Extension",
+    color: "#166534",
+    cards: [
+      { label: "3.1",       path: "/criteria3/3-1",     color: "#166534", icon: "bi-person-workspace",  desc: "Full-Time Teachers"          },
+      { label: "3.2",       path: "/criteria3/3-2",     color: "#15803d", icon: "bi-postcard",          desc: "Sanctioned Posts"             },
+      { label: "3.1.1&3.1.2", path: "/criteria3/3-1-1-2", color: "#16a34a", icon: "bi-bank",           desc: "Research Grants"              },
+      { label: "3.1.3",    path: "/criteria3/3-1-3",   color: "#22c55e", icon: "bi-easel2",             desc: "Seminars & Workshops"         },
+      { label: "3.2.1",    path: "/criteria3/3-2-1",   color: "#4ade80", icon: "bi-journal-richtext",   desc: "Papers in UGC Journals"       },
+      { label: "3.2.2",    path: "/criteria3/3-2-2",   color: "#166534", icon: "bi-book-half",          desc: "Books & Chapters"             },
+      { label: "3.3.2",    path: "/criteria3/3-3-2",   color: "#15803d", icon: "bi-trophy",             desc: "Extension Awards"             },
+      { label: "3.3.3&3.3.4", path: "/criteria3/3-3-3-4", color: "#16a34a", icon: "bi-people",         desc: "Outreach & Participation"     },
+      { label: "3.4.1",    path: "/criteria3/3-4-1",   color: "#22c55e", icon: "bi-diagram-3",          desc: "Collaborations / Linkages"    },
+      { label: "3.4.2",    path: "/criteria3/3-4-2",   color: "#4ade80", icon: "bi-file-earmark-text",  desc: "Functional MoUs"              },
     ],
   },
   {
@@ -49,6 +69,18 @@ const CRITERIA_GROUPS = [
       { label: "5.3.3", path: "/criteria5/5-3-3", color: "#6d28d9", icon: "bi-balloon-heart",      desc: "Sports & Cultural Events"     },
     ],
   },
+  {
+    key: "6", label: "Criteria 6", subtitle: "Governance, Leadership and Management",
+    color: "#0f766e",
+    cards: [
+      { label: "6.2.3", path: "/criteria6/6-2-3", color: "#0f766e", icon: "bi-laptop",          desc: "e-Governance Implementation" },
+      { label: "6.3.2", path: "/criteria6/6-3-2", color: "#0d9488", icon: "bi-person-check",    desc: "Financial Support-Conferences" },
+      { label: "6.3.3", path: "/criteria6/6-3-3", color: "#0891b2", icon: "bi-mortarboard",     desc: "Professional Dev. Programs"  },
+      { label: "6.3.4", path: "/criteria6/6-3-4", color: "#0369a1", icon: "bi-journal-bookmark", desc: "FDP - Faculty Development"     },
+      { label: "6.4.2", path: "/criteria6/6-4-2", color: "#1d4ed8", icon: "bi-currency-rupee",  desc: "Non-Govt Funds / Grants"      },
+      { label: "6.5.3", path: "/criteria6/6-5-3", color: "#7c3aed", icon: "bi-patch-check-fill", desc: "Quality Assurance Initiatives" },
+    ],
+  },
 ];
 
 export default function Dashboard() {
@@ -58,11 +90,9 @@ export default function Dashboard() {
   const StatCard = ({ card }) => (
     <div className="col-md-4 col-lg-3">
       <div
-        className="card border-0 shadow-sm h-100 fade-in"
-        style={{ borderRadius: 16, borderBottom: `4px solid ${card.color}`, cursor: "pointer", transition: "transform 0.2s, box-shadow 0.2s" }}
+        className="card border-0 shadow-sm h-100 fade-in dashboard-card"
+        style={{ borderBottom: `4px solid ${card.color}` }}
         onClick={() => navigate(card.path)}
-        onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,0,0,0.12)"; }}
-        onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}
       >
         <div className="card-body text-center p-4">
           <div style={{ width: 52, height: 52, borderRadius: "50%", background: `${card.color}18`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 0.75rem" }}>
@@ -137,11 +167,17 @@ export default function Dashboard() {
                   <button className="btn btn-outline-secondary px-4 py-2 rounded-pill" onClick={() => navigate("/criteria2/2-1")}>
                     Go to Criteria 2
                   </button>
+                  <button className="btn btn-outline-success px-4 py-2 rounded-pill" onClick={() => navigate("/criteria3/3-1")}>
+                    Go to Criteria 3
+                  </button>
                   <button className="btn btn-outline-primary px-4 py-2 rounded-pill" onClick={() => navigate("/criteria4/4-1-3")}>
                     Go to Criteria 4
                   </button>
                   <button className="btn btn-outline-secondary px-4 py-2 rounded-pill" onClick={() => navigate("/criteria5/5-1-1")}>
                     Go to Criteria 5
+                  </button>
+                  <button className="btn btn-outline-success px-4 py-2 rounded-pill" onClick={() => navigate("/criteria6/6-2-3")}>
+                    Go to Criteria 6
                   </button>
                 </div>
               </div>

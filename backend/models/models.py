@@ -1,5 +1,9 @@
-from ..extensions import db
+import re
+import uuid
+
+from extensions import db
 from datetime import datetime, date
+from sqlalchemy import event
 
 
 # ==============================================================================
@@ -50,6 +54,8 @@ class CourseTypeLookup(db.Model):
     __tablename__ = 'course_type_lookup'
     id = db.Column(db.Integer, primary_key=True)
     value = db.Column(db.String(100), unique=True, nullable=False)
+    # Links this label to course_lookup.course_code for Criterion 1.3.2 dropdowns
+    course_code = db.Column(db.String(100), nullable=True)
 
 class AcademicYearLookup(db.Model):
     __tablename__ = 'academic_year_lookup'
@@ -116,6 +122,12 @@ class TeamIndividualLookup(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     value = db.Column(db.String(50), unique=True, nullable=False)
 
+class AddonDurationLookup(db.Model):
+    """Add-on / certificate program duration labels (Criterion 1.2.2)."""
+    __tablename__ = 'addon_duration_lookup'
+    id = db.Column(db.Integer, primary_key=True)
+    value = db.Column(db.String(120), unique=True, nullable=False)
+
 class StudentLookup(db.Model):
     __tablename__ = 'student_filter_lookup'
     id = db.Column(db.Integer, primary_key=True)
@@ -161,6 +173,14 @@ class ProofLink122_123(db.Model):
     __tablename__ = 'proof_link_122_123'
     id = db.Column(db.Integer, primary_key=True)
     link = db.Column(db.Text, nullable=True)
+
+class CriterionProofLink(db.Model):
+    """Generic single-row proof link store for any criterion key."""
+    __tablename__ = 'criterion_proof_links'
+    id = db.Column(db.Integer, primary_key=True)
+    criterion_key = db.Column(db.String(50), unique=True, nullable=False)
+    link = db.Column(db.Text, nullable=True)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 # ==============================================================================
@@ -210,11 +230,29 @@ class Student(db.Model, AuditMixin):
     name = db.Column(db.String(255), nullable=False)
     program_id = db.Column(db.Integer, db.ForeignKey('program_lookup.id'), nullable=True)
     category = db.Column(db.String(50), nullable=True)
+    # Academic year when student was admitted (e.g. 2023-24)
+    admission_year = db.Column(db.String(20), nullable=True)
+    # Unique course/subject code per student (from bulk upload) — Criterion 1.3.2
+    experiential_course_code = db.Column(db.String(100), nullable=True)
+    # Course name label per student (e.g. PBL, Major Project) when codes differ per student
+    experiential_course_name = db.Column(db.String(255), nullable=True)
 
     program = db.relationship('Program', backref='students_rel')
 
     def __repr__(self):
         return f"<Student {self.enrollment_number} - {self.name}>"
+
+
+@event.listens_for(Student, 'before_insert')
+def _student_ensure_enrollment_before_insert(mapper, connection, target):
+    """Name-only uploads: DB requires enrollment_number — assign synthetic ID if missing."""
+    enr = (target.enrollment_number or '').strip()
+    if enr.lower() in ('', 'none', 'nan', 'null', 'n/a', '-'):
+        enr = ''
+    if not enr:
+        yr = re.sub(r'[^0-9-]', '', (target.admission_year or '0000'))[:12] or '0000'
+        slug = re.sub(r'[^a-z0-9]', '', (target.name or 'student').lower())[:24] or 'student'
+        target.enrollment_number = f"NAAC-{yr}-{slug}-{uuid.uuid4().hex[:6]}"[:100]
 
 
 class Teacher(db.Model, AuditMixin):
@@ -260,7 +298,7 @@ class C113TeacherBodies(db.Model, AuditMixin):
     __tablename__ = 'c113_teacher_bodies'
 
     id = db.Column(db.Integer, primary_key=True)
-    year = db.Column(db.Integer, nullable=False)
+    year = db.Column(db.String(50), nullable=False)
     teacher_id = db.Column(db.Integer, db.ForeignKey('teacher_lookup.id'), nullable=False)
     body_name = db.Column(db.String(255), nullable=False)
     proof_document = db.Column(db.Text, nullable=True)
@@ -272,7 +310,14 @@ class C121CBCS(db.Model, AuditMixin):
     __tablename__ = 'c121_cbcs'
 
     id = db.Column(db.Integer, primary_key=True)
-    program_id = db.Column(db.Integer, db.ForeignKey('program_lookup.id'), nullable=False)
+    program_id = db.Column(db.Integer, db.ForeignKey('program_lookup.id'), nullable=True)
+    department = db.Column(db.String(100), nullable=True)
+    semester = db.Column(db.String(100), nullable=True)
+    subject_code = db.Column(db.String(100), nullable=True)
+    subject_name = db.Column(db.String(255), nullable=True)
+    year_intro = db.Column(db.String(20), nullable=True)
+    cbcs_status = db.Column(db.String(10), nullable=True)
+    cbcs_year = db.Column(db.String(20), nullable=True)
     status_of_implementation = db.Column(db.Boolean, nullable=True)
     year_of_implementation = db.Column(db.Integer, nullable=True)
     proof_links = db.Column(db.Text, nullable=True)
@@ -290,6 +335,7 @@ class C122Addon(db.Model, AuditMixin):
     duration = db.Column(db.String(100), nullable=True)
     students_enrolled = db.Column(db.Integer, nullable=True)
     students_completed = db.Column(db.Integer, nullable=True)
+    proof_links = db.Column(db.Text, nullable=True)
 
     course = db.relationship('Course', backref='addon_rel')
 
@@ -323,6 +369,38 @@ class C133Projects(db.Model, AuditMixin):
 # CRITERIA 2 MODELS
 # ==============================================================================
 
+class C21StudentsDuringYear(db.Model, AuditMixin):
+    """Criterion 2.1 — Number of students during the year (enrollment snapshot)."""
+    __tablename__ = 'c21_students_during_year'
+
+    id = db.Column(db.Integer, primary_key=True)
+    enrollment_year = db.Column(db.String(30), nullable=False)
+    student_name = db.Column(db.String(255), nullable=False)
+    enrollment_number = db.Column(db.String(120), nullable=False)
+    enrollment_date = db.Column(db.Date, nullable=True)
+    proof_links = db.Column(db.Text, nullable=True)
+
+
+class C22ReservedSeats(db.Model, AuditMixin):
+    """Criterion 2.2 — Reserved category seats (per year & category)."""
+    __tablename__ = 'c22_reserved_seats'
+
+    id = db.Column(db.Integer, primary_key=True)
+    year = db.Column(db.String(50), nullable=False)
+    category = db.Column(db.String(80), nullable=False)
+    reserved_seats = db.Column(db.Integer, nullable=True)
+    document_link = db.Column(db.Text, nullable=True)
+
+
+class C233MentorMeta(db.Model, AuditMixin):
+    """Stores total mentor count for mentor–mentee ratio (2.3.3); single logical row."""
+    __tablename__ = 'c233_mentor_meta'
+
+    id = db.Column(db.Integer, primary_key=True)
+    mentor_count = db.Column(db.Integer, nullable=False, default=1)
+    academic_year = db.Column(db.String(50), nullable=True)
+
+
 class C211Enrolment(db.Model, AuditMixin):
     __tablename__ = 'c211_enrolment'
     id = db.Column(db.Integer, primary_key=True)
@@ -330,11 +408,12 @@ class C211Enrolment(db.Model, AuditMixin):
     program_id = db.Column(db.Integer, db.ForeignKey('program_lookup.id'), nullable=False)
     sanctioned_seats = db.Column(db.Integer, nullable=True)
     admitted_students = db.Column(db.Integer, nullable=True)
+    proof_links = db.Column(db.Text, nullable=True)
 
 class C212Reservation(db.Model, AuditMixin):
     __tablename__ = 'c212_reservation'
     id = db.Column(db.Integer, primary_key=True)
-    year = db.Column(db.Integer, nullable=False)
+    year = db.Column(db.String(50), nullable=False)
     earmarked_sc = db.Column(db.Integer, nullable=True)
     earmarked_st = db.Column(db.Integer, nullable=True)
     earmarked_obc = db.Column(db.Integer, nullable=True)
@@ -350,8 +429,9 @@ class C212Reservation(db.Model, AuditMixin):
 class C23OutgoingStudents(db.Model, AuditMixin):
     __tablename__ = 'c23_outgoing_students'
     id = db.Column(db.Integer, primary_key=True)
-    year_of_passing = db.Column(db.Integer, nullable=False)
+    year_of_passing = db.Column(db.String(50), nullable=False)
     student_id = db.Column(db.Integer, db.ForeignKey('student_lookup.id'), nullable=False)
+    proof_links = db.Column(db.Text, nullable=True)
     student = db.relationship('Student', backref='outgoing_rel')
 
 class C233MentorRatio(db.Model, AuditMixin):
@@ -366,16 +446,19 @@ class C233MentorRatio(db.Model, AuditMixin):
     total_students = db.Column(db.Integer, nullable=True)
     total_mentors = db.Column(db.Integer, nullable=True)
     mentor_ratio = db.Column(db.String(50), nullable=True)
+    proof_links = db.Column(db.Text, nullable=True)
 
 class C241Teachers(db.Model, AuditMixin):
     __tablename__ = 'c241_teachers'
     id = db.Column(db.Integer, primary_key=True)
     teacher_id = db.Column(db.Integer, db.ForeignKey('teacher_lookup.id'), nullable=False)
+    department = db.Column(db.String(255), nullable=True)
     year_of_appointment = db.Column(db.Integer, nullable=True)
     nature_of_appointment = db.Column(db.String(100), nullable=True)
     total_years_experience = db.Column(db.Float, nullable=True)
     is_still_serving = db.Column(db.Boolean, nullable=True, default=True)
     last_year_of_service = db.Column(db.Integer, nullable=True)
+    proof_links = db.Column(db.Text, nullable=True)
     teacher = db.relationship('Teacher', backref='appointment_rel')
 
 class C242TeacherPhD(db.Model, AuditMixin):
@@ -384,17 +467,20 @@ class C242TeacherPhD(db.Model, AuditMixin):
     teacher_id = db.Column(db.Integer, db.ForeignKey('teacher_lookup.id'), nullable=False)
     qualification = db.Column(db.String(100), nullable=True)
     year_of_obtaining = db.Column(db.Integer, nullable=True)
+    number_of_full_time_teachers = db.Column(db.Integer, nullable=True)
     is_still_serving = db.Column(db.Boolean, nullable=True, default=True)
     last_year_of_service = db.Column(db.Integer, nullable=True)
+    proof_links = db.Column(db.Text, nullable=True)
     teacher = db.relationship('Teacher', backref='phd_rel')
 
 class C263PassPercentage(db.Model, AuditMixin):
     __tablename__ = 'c263_pass_percentage'
     id = db.Column(db.Integer, primary_key=True)
-    year = db.Column(db.Integer, nullable=False)
+    year = db.Column(db.String(50), nullable=False)
     program_id = db.Column(db.Integer, db.ForeignKey('program_lookup.id'), nullable=False)
     students_appeared = db.Column(db.Integer, nullable=True)
     students_passed = db.Column(db.Integer, nullable=True)
+    proof_links = db.Column(db.Text, nullable=True)
 
 
 # ==============================================================================
@@ -456,14 +542,17 @@ class C321Papers(db.Model, AuditMixin):
 class C322Books(db.Model, AuditMixin):
     __tablename__ = 'c322_books'
     id = db.Column(db.Integer, primary_key=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teacher_lookup.id'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('teacher_lookup.id'), nullable=True)
+    other_teacher_name = db.Column(db.String(255), nullable=True)
+    author_names = db.Column(db.Text, nullable=True)
+    teacher_ids = db.Column(db.Text, nullable=True)
     book_title = db.Column(db.String(500), nullable=True)
     chapter_title = db.Column(db.String(500), nullable=True)
     paper_title = db.Column(db.String(500), nullable=True)
     conference_name = db.Column(db.String(255), nullable=True)
     proceedings_title = db.Column(db.String(500), nullable=True)
     level = db.Column(db.String(50), nullable=True)
-    year_of_publication = db.Column(db.Integer, nullable=True)
+    year_of_publication = db.Column(db.String(50), nullable=True)
     isbn_issn = db.Column(db.String(50), nullable=True)
     affiliating_institute = db.Column(db.String(255), nullable=True)
     publisher = db.Column(db.String(255), nullable=True)
@@ -563,6 +652,8 @@ class C513SkillInitiatives(db.Model, AuditMixin):
     implementation_date = db.Column(db.Date, nullable=True)
     students_enrolled = db.Column(db.Integer, nullable=True)
     agencies_involved = db.Column(db.Text, nullable=True)
+    year = db.Column(db.String(20), nullable=True)
+    proof_links = db.Column(db.Text, nullable=True)
 
 class C514CompetitiveExams(db.Model, AuditMixin):
     __tablename__ = 'c514_competitive_exams'

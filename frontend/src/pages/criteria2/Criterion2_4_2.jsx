@@ -2,35 +2,51 @@
 // Criterion2_4_2.jsx — 2.4.2 Teachers with Ph.D./NET/SET
 // Qualification dropdown fetched from backend
 // ============================================================
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useCallback } from "react";
 import Sidebar from "../../components/Sidebar";
 import Footer from "../../components/Footer";
-import { getRecords, addRecord, updateRecord, deleteRecord } from "../../api/apiService";
+import { getRecords, addRecord, updateRecord, deleteRecord, getTeachers } from "../../api/apiService";
+import { CriterionProofFileSection } from "../../components/criteria/CriterionProofSection";
+import { DropdownWithAddMore } from "../../components/forms";
 
-const emptyForm = () => ({ teacher_name: "", qualification: "", obtaining_year: "" });
+const emptyForm = () => ({
+  teacher_id: "",
+  teacher_name: "",
+  qualification: "",
+  obtaining_year: "",
+  number_of_full_time_teachers: "",
+});
 
 export default function Criterion2_4_2() {
-  const navigate = useNavigate();
   const [form, setForm] = useState(emptyForm());
   const [records, setRecords] = useState([]);
   const [editRecord, setEditRecord] = useState(null);
   const [qualificationOptions, setQualificationOptions] = useState([]);
+  const [teachers, setTeachers] = useState([]);
   const [alert, setAlert] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const refreshTeachers = useCallback(() => {
+    getTeachers()
+      .then((tlist) => setTeachers(Array.isArray(tlist) ? tlist : []))
+      .catch(() => {});
+  }, []);
   useEffect(() => {
-    Promise.all([
+    Promise.allSettled([
       getRecords("2_4_2"),
       getRecords("2_4_2_qualification_options"),
-    ]).then(([recs, opts]) => {
-      setRecords(recs);
-      // Use backend options if available; else use default qualification list
+      getTeachers(),
+    ]).then(([recsR, optsR, tlistR]) => {
+      const recs  = recsR.status  === "fulfilled" ? recsR.value  : [];
+      const opts  = optsR.status  === "fulfilled" ? optsR.value  : [];
+      const tlist = tlistR.status === "fulfilled" ? tlistR.value : [];
+      setRecords(Array.isArray(recs) ? recs : []);
       setQualificationOptions(
         opts && opts.length > 0
           ? opts.map(o => (typeof o === "string" ? o : o.value || o.label))
-          : ["Ph.D.", "NET", "SET", "SLET"]
+          : []
       );
+      setTeachers(Array.isArray(tlist) ? tlist : []);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -41,16 +57,43 @@ export default function Criterion2_4_2() {
 
   const handleChange = (field, val) => setForm(f => ({ ...f, [field]: val }));
 
+  const handleTeacherSelect = (rawId) => {
+    const tid = parseInt(rawId, 10);
+    const t = teachers.find(x => x.id === tid);
+    setForm(f => ({
+      ...f,
+      teacher_id: Number.isFinite(tid) ? tid : "",
+      teacher_name: t?.name ?? "",
+    }));
+  };
+
   const handleSave = async () => {
-    const { teacher_name, qualification, obtaining_year } = form;
-    if (!teacher_name || !qualification || !obtaining_year) {
+    const { teacher_name, qualification, obtaining_year, number_of_full_time_teachers } = form;
+    if (!teacher_name || !qualification || !obtaining_year || number_of_full_time_teachers === "") {
       return showAlert("Please fill all fields.", "danger");
     }
-    const result = await addRecord("2_4_2", form);
+    const nfte = parseInt(number_of_full_time_teachers, 10);
+    if (!Number.isFinite(nfte) || nfte < 0) {
+      return showAlert("Enter a valid non-negative number for full-time teachers.", "danger");
+    }
+    try {
+    let payload = {
+      teacher_name,
+      qualification,
+      obtaining_year,
+      number_of_full_time_teachers: nfte,
+    };
+    const result = await addRecord("2_4_2", payload);
     if (result.success) {
-      setRecords(prev => [...prev, result.data]);
+      const updated = await getRecords("2_4_2");
+      setRecords(Array.isArray(updated) ? updated : []);
       setForm(emptyForm());
       showAlert("Qualification record saved!");
+    } else {
+      showAlert(result.error || "Could not save.", "danger");
+    }
+    } catch (err) {
+      showAlert(err.message || "Save failed.", "danger");
     }
   };
 
@@ -62,10 +105,24 @@ export default function Criterion2_4_2() {
   };
 
   const handleEditSave = async () => {
-    await updateRecord("2_4_2", editRecord.id, editRecord);
-    setRecords(prev => prev.map(r => r.id === editRecord.id ? editRecord : r));
-    setEditRecord(null);
-    showAlert("Record updated!");
+    if (!editRecord) return;
+    const nfte = parseInt(editRecord.number_of_full_time_teachers, 10);
+    if (!Number.isFinite(nfte) || nfte < 0) {
+      return showAlert("Enter a valid non-negative number for full-time teachers.", "danger");
+    }
+    let payload = {
+      qualification: editRecord.qualification,
+      obtaining_year: editRecord.obtaining_year,
+      number_of_full_time_teachers: nfte,
+    };
+    const result = await updateRecord("2_4_2", editRecord.id, payload);
+    if (result.success && result.data) {
+      setRecords(prev => prev.map(r => r.id === editRecord.id ? result.data : r));
+      setEditRecord(null);
+      showAlert("Record updated!");
+    } else {
+      showAlert(result.error || "Update failed.", "danger");
+    }
   };
 
   return (
@@ -77,7 +134,7 @@ export default function Criterion2_4_2() {
             <p className="text-muted mb-0" style={{ fontSize: "0.78rem", textTransform: "uppercase", letterSpacing: 1 }}>Criteria 2</p>
             <h4>2.4.2: Teachers with Ph.D. / NET / SET</h4>
           </div>
-          <button className="btn btn-success btn-sm fw-semibold" onClick={() => navigate("/export/2-4-2")}>
+          <button className="btn btn-success btn-sm fw-semibold" onClick={() => { window.location.href = '/api/export-excel/2_4_2'; }}>
             <i className="bi bi-file-earmark-excel me-1"></i> Export Excel
           </button>
         </header>
@@ -102,21 +159,52 @@ export default function Criterion2_4_2() {
               ) : (
                 <div className="row g-3 align-items-end">
                   <div className="col-md-4">
-                    <label className="form-label-custom">Name of Full-time Teacher</label>
-                    <input type="text" className="form-control" placeholder="Enter teacher name"
-                      value={form.teacher_name} onChange={e => handleChange("teacher_name", e.target.value)} />
+                    <DropdownWithAddMore
+                      label="Name of Full-time Teacher"
+                      selectClassName="form-select"
+                      required
+                      value={form.teacher_id ? String(form.teacher_id) : ""}
+                      onChange={handleTeacherSelect}
+                      options={teachers}
+                      optionValue={(o) => String(o.id)}
+                      optionLabel={(o) => o.name}
+                      placeholder="Select teacher…"
+                      addMoreMode="teacher"
+                      teacherEmitField="id"
+                      onAfterAdd={refreshTeachers}
+                    />
                   </div>
-                  <div className="col-md-3">
-                    <label className="form-label-custom">Qualification</label>
-                    <select className="form-select" value={form.qualification} onChange={e => handleChange("qualification", e.target.value)}>
-                      <option value="">Select Qualification</option>
-                      {qualificationOptions.map(q => <option key={q} value={q}>{q}</option>)}
-                    </select>
+                  <div className="col-md-2">
+                    <DropdownWithAddMore
+                      label="Qualification"
+                      selectClassName="form-select"
+                      value={form.qualification}
+                      onChange={(v) => handleChange("qualification", v)}
+                      options={qualificationOptions.map((q) => ({ value: q, label: q }))}
+                      optionValue={(o) => o.value}
+                      optionLabel={(o) => o.label}
+                      placeholder="Select Qualification"
+                      addMoreMode="lookup"
+                      lookupKey="highest-degrees"
+                      onAfterAdd={() =>
+                        getRecords("2_4_2_qualification_options").then((opts) =>
+                          setQualificationOptions(
+                            opts?.length ? opts.map((o) => (typeof o === "string" ? o : o.value || o.label)) : []
+                          )
+                        )
+                      }
+                    />
                   </div>
-                  <div className="col-md-3">
+                  <div className="col-md-2">
                     <label className="form-label-custom">Year of Obtaining</label>
                     <input type="text" className="form-control" placeholder="e.g. 2021"
                       value={form.obtaining_year} onChange={e => handleChange("obtaining_year", e.target.value)} />
+                  </div>
+                  <div className="col-md-2">
+                    <label className="form-label-custom">Number of full-time teachers</label>
+                    <input type="number" className="form-control" min="0"
+                      value={form.number_of_full_time_teachers}
+                      onChange={e => handleChange("number_of_full_time_teachers", e.target.value)} />
                   </div>
                   <div className="col-md-2">
                     <button className="btn btn-danger w-100 fw-bold" onClick={handleSave}>
@@ -137,12 +225,13 @@ export default function Criterion2_4_2() {
                     <th>Teacher Name</th>
                     <th>Qualification</th>
                     <th>Year of Obtaining</th>
+                    <th>No. of full-time teachers</th>
                     <th className="text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {records.length === 0 ? (
-                    <tr><td colSpan={4} className="text-center text-muted py-5">No records yet.</td></tr>
+                    <tr><td colSpan={5} className="text-center text-muted py-5">No records yet.</td></tr>
                   ) : records.map(row => (
                     <tr key={row.id}>
                       <td className="fw-semibold">{row.teacher_name}</td>
@@ -150,6 +239,7 @@ export default function Criterion2_4_2() {
                         <span className="badge bg-info text-dark fw-semibold">{row.qualification}</span>
                       </td>
                       <td>{row.obtaining_year}</td>
+                      <td className="fw-semibold">{row.number_of_full_time_teachers ?? "—"}</td>
                       <td className="text-center">
                         <div className="btn-group btn-group-sm">
                           <button className="btn btn-outline-primary" onClick={() => setEditRecord({ ...row })}>
@@ -167,13 +257,14 @@ export default function Criterion2_4_2() {
             </div>
           </div>
         </div>
-        <Footer />
+          <CriterionProofFileSection criterionKey="2_4_2" />
+          <Footer />
       </div>
 
       {/* Edit Modal */}
       {editRecord && (
         <div className="modal show d-block" style={{ background: "rgba(0,0,0,0.5)" }}>
-          <div className="modal-dialog modal-dialog-centered">
+              <div className="modal-dialog modal-dialog-centered modal-lg">
             <div className="modal-content border-0 shadow-lg" style={{ borderRadius: 14 }}>
               <div className="modal-header" style={{ background: "#b31d1d", color: "white", borderRadius: "14px 14px 0 0" }}>
                 <h5 className="modal-title fw-bold">Edit Qualification: {editRecord.teacher_name}</h5>
@@ -181,16 +272,39 @@ export default function Criterion2_4_2() {
               </div>
               <div className="modal-body p-4">
                 <div className="mb-3">
-                  <label className="form-label-custom">Qualification</label>
-                  <select className="form-select" value={editRecord.qualification}
-                    onChange={e => setEditRecord({ ...editRecord, qualification: e.target.value })}>
-                    {qualificationOptions.map(q => <option key={q} value={q}>{q}</option>)}
-                  </select>
+                  <DropdownWithAddMore
+                    label="Qualification"
+                    selectClassName="form-select"
+                    value={editRecord.qualification}
+                    onChange={(v) => setEditRecord({ ...editRecord, qualification: v })}
+                    options={qualificationOptions.map((q) => ({ value: q, label: q }))}
+                    optionValue={(o) => o.value}
+                    optionLabel={(o) => o.label}
+                    placeholder="Select Qualification"
+                    addMoreMode="lookup"
+                    lookupKey="highest-degrees"
+                    onAfterAdd={() =>
+                      getRecords("2_4_2_qualification_options").then((opts) =>
+                        setQualificationOptions(
+                          opts?.length ? opts.map((o) => (typeof o === "string" ? o : o.value || o.label)) : []
+                        )
+                      )
+                    }
+                  />
                 </div>
                 <div className="mb-3">
                   <label className="form-label-custom">Year of Obtaining</label>
                   <input type="text" className="form-control" value={editRecord.obtaining_year}
                     onChange={e => setEditRecord({ ...editRecord, obtaining_year: e.target.value })} />
+                </div>
+                <div className="mb-3">
+                  <label className="form-label-custom">Number of full-time teachers</label>
+                  <input type="number" className="form-control" min="0"
+                    value={editRecord.number_of_full_time_teachers ?? ""}
+                    onChange={e =>
+                      setEditRecord({ ...editRecord, number_of_full_time_teachers: e.target.value })
+                    }
+                  />
                 </div>
               </div>
               <div className="modal-footer bg-light" style={{ borderRadius: "0 0 14px 14px" }}>

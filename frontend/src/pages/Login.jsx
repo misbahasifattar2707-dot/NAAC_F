@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Footer from "../components/Footer";
-import { getAcademicYears } from "../api/apiService";
+import { getAcademicYears, getProgrammes } from "../api/apiService";
+import { DropdownWithAddMore } from "../components/forms";
+import { programmeDisplayLabel, formatProgrammeOptionLabel } from "../utils/programmeDisplay";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -9,17 +11,27 @@ export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const [program, setProgram] = useState("MCA");
+  const [programCode, setProgramCode] = useState("515124110");
+  const [programs, setPrograms] = useState([]);
   const [academicYears, setAcademicYears] = useState([]);
   const [selectedYear, setSelectedYear] = useState("2024-25");
 
   useEffect(() => {
-    getAcademicYears().then(years => {
+    Promise.all([getAcademicYears(), getProgrammes()]).then(([years, progs]) => {
       setAcademicYears(years);
-      if (years.length > 0) {
-        // Default to the latest year or a sensible default
-        setSelectedYear(years[years.length - 1]);
+      if (years.length > 0) setSelectedYear(years[years.length - 1]);
+      const list = progs || [];
+      setPrograms(list);
+      const mca = list.find((p) => p.code === "515124110" || programmeDisplayLabel(p) === "MCA");
+      if (mca) {
+        setProgram(programmeDisplayLabel(mca));
+        setProgramCode(mca.code);
+      } else if (list[0]) {
+        setProgram(programmeDisplayLabel(list[0]));
+        setProgramCode(list[0].code);
       }
     });
   }, []);
@@ -27,38 +39,41 @@ export default function Login() {
   const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
+    setLoading(true);
     
     try {
-      const res = await fetch("http://localhost:5000/api/login", {
+      const res = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password, academic_year: selectedYear })
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        // We inject the selected program here
-        const user = { ...data.user, program, programCode: program === "MCA" ? "515124110" : "000000000" };
+        const user = {
+          ...data.user,
+          program,
+          programCode,
+          department: data.user?.department || program,
+        };
         localStorage.setItem("mettrack_user", JSON.stringify(user));
         navigate("/dashboard");
       } else {
         setError(data.error || "Invalid username or password.");
       }
     } catch (err) {
-      setError("Network error. Could not connect to API.");
+      setError("Network error. Could not connect to the server. Make sure the backend is running.");
+    } finally {
+      setLoading(false);
     }
   };
 
   const roles = ["Super Admin", "Admin", "Staff"];
 
   return (
-    <div className="app-layout" style={{ minHeight: "100vh", width: "100vw" }}>
+    <div className="auth-shell">
       {/* Left sidebar */}
-      <div style={{
-        width: 260, minWidth: 260, background: "#1a1a2e", color: "#fff",
-        minHeight: "100vh", display: "flex", flexDirection: "column", padding: "2rem 0",
-        flexShrink: 0,
-      }}>
-        <div style={{ padding: "0 1.5rem 2rem", fontFamily: "'DM Serif Display',serif", fontSize: "1.6rem", borderBottom: "1px solid rgba(255,255,255,0.1)", letterSpacing: 3 }}>
+      <div className="auth-sidebar">
+        <div className="auth-brand">
           MET<span style={{ color: "#dc3545" }}>track</span>
         </div>
         <nav style={{ padding: "1rem 0" }}>
@@ -82,19 +97,15 @@ export default function Login() {
       </div>
 
       {/* Main content */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh", overflow: "auto" }}>
-        <header style={{ padding: "1.5rem 2rem", background: "#fff", borderBottom: "1px solid #e9ecef", boxShadow: "0 2px 8px rgba(0,0,0,0.05)", flexShrink: 0 }}>
+      <div className="auth-main">
+        <header className="auth-header">
           <h4 style={{ color: "#dc3545", fontWeight: 700, margin: 0 }}>{role} Portal Access</h4>
         </header>
 
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem" }}>
-          <div className="card border-0 shadow-lg p-5 fade-in" style={{ maxWidth: 440, width: "100%", borderRadius: 20 }}>
+        <div className="auth-center">
+          <div className="card border-0 shadow-lg p-5 fade-in auth-card">
             <div className="text-center mb-4">
-              <div style={{
-                width: 70, height: 70, borderRadius: "50%",
-                background: "#dc3545", display: "flex", alignItems: "center",
-                justifyContent: "center", margin: "0 auto 1rem"
-              }}>
+              <div className="auth-icon-badge">
                 <i className="bi bi-lock-fill" style={{ fontSize: "1.8rem", color: "#fff" }}></i>
               </div>
               <h3 className="fw-bold">{role} Login</h3>
@@ -105,24 +116,50 @@ export default function Login() {
 
             <form onSubmit={handleLogin}>
               <div className="mb-3">
-                <label className="form-label-custom">Program</label>
-                <select className="form-select form-control-lg" value={program} onChange={e => setProgram(e.target.value)}>
-                  <option value="MCA">MCA</option>
-                  <option value="MBA">MBA</option>
-                </select>
+                <DropdownWithAddMore
+                  label="Program"
+                  className=""
+                  selectClassName="form-select form-control-lg"
+                  value={programCode}
+                  onChange={(code) => {
+                    setProgramCode(code);
+                    const p = programs.find((x) => x.code === code);
+                    setProgram(p ? programmeDisplayLabel(p) : "");
+                  }}
+                  options={programs}
+                  optionValue={(p) => p.code}
+                  optionLabel={(p) => formatProgrammeOptionLabel(p)}
+                  placeholder="Select programme"
+                  required
+                  addMoreMode="programme"
+                  programmeCollectDepartment
+                  programmeValueField="code"
+                  onAfterAdd={() =>
+                    getProgrammes().then((list) => {
+                      setPrograms(list || []);
+                    })
+                  }
+                />
               </div>
               <div className="mb-3">
-                <label className="form-label-custom">Academic Year</label>
-                <select 
-                  className="form-select form-control-lg" 
-                  value={selectedYear} 
-                  onChange={e => setSelectedYear(e.target.value)}
-                >
-                  <option value="" disabled>Select Year</option>
-                  {academicYears.map(y => (
-                    <option key={y} value={y}>{y}</option>
-                  ))}
-                </select>
+                <DropdownWithAddMore
+                  label="Academic Year"
+                  selectClassName="form-select form-control-lg"
+                  value={selectedYear}
+                  onChange={setSelectedYear}
+                  options={academicYears.map((y) => ({ value: y, label: y }))}
+                  optionValue={(o) => o.value}
+                  optionLabel={(o) => o.label}
+                  placeholder="Select Year"
+                  required
+                  addMoreMode="lookup"
+                  lookupKey="academic-years"
+                  onAfterAdd={() =>
+                    getAcademicYears().then((years) => {
+                      setAcademicYears(years);
+                    })
+                  }
+                />
               </div>
               <div className="mb-3">
                 <label className="form-label-custom">Username</label>
@@ -140,8 +177,10 @@ export default function Login() {
                   onChange={(e) => setPassword(e.target.value)} required
                 />
               </div>
-              <button type="submit" className="btn btn-danger w-100 py-3 fw-bold text-uppercase">
-                Login to Portal
+              <button type="submit" className="btn btn-danger w-100 py-3 fw-bold text-uppercase" disabled={loading}>
+                {loading ? (
+                  <><span className="spinner-border spinner-border-sm me-2" role="status"></span>Logging in…</>
+                ) : "Login to Portal"}
               </button>
               
               <div className="text-center mt-4">

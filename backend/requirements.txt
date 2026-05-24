@@ -1,3 +1,11 @@
 flask
+flask-bcrypt
 flask-sqlalchemy
 flask-cors
+openpyxl
+pypdf
+Pillow
+requests
+pandas
+psycopg2-binary
+PyMySQL

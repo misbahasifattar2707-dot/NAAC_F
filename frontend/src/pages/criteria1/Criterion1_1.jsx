@@ -8,8 +8,9 @@ import Footer from "../../components/Footer";
 import {
   getDepartments, getSemesters, getCoursesBySemester, addCourse,
   getRecords, addRecord, deleteRecord, updateRecord, addLookup,
-  uploadEvidence, getExcelExportUrl
+  getExcelExportUrl,
 } from "../../api/apiService";
+import { CriterionProofFileSection } from "../../components/criteria/CriterionProofSection";
 
 export default function Criterion1_1() {
   // ---- Dropdown state (loaded from API) ----
@@ -31,10 +32,10 @@ export default function Criterion1_1() {
     return "";
   });
   const [courseRows, setCourseRows]           = useState([{ courseCode: "", courseName: "" }]);
-  const [proofLink, setProofLink]             = useState("");
-  const [proofFiles, setProofFiles]           = useState(null);
-  const [uploading, setUploading]             = useState(false);
-  
+  const [submitting, setSubmitting]             = useState(false);
+  const [records, setRecords]     = useState([]);
+  const [editRecord, setEditRecord] = useState(null);
+  const [alert, setAlert]         = useState(null);
   // const user = JSON.parse(localStorage.getItem("mettrack_user") || '{}'); // Moved up
 
   // ---- "Other" inline form state ----
@@ -43,11 +44,6 @@ export default function Criterion1_1() {
   const [savingSem, setSavingSem]           = useState(false);
   // Per-row "Other Course" inline forms: { [rowIndex]: { show, code, name, saving } }
   const [otherCourse, setOtherCourse]       = useState({});
-
-  // ---- Records state ----
-  const [records, setRecords]     = useState([]);
-  const [editRecord, setEditRecord] = useState(null);
-  const [alert, setAlert]         = useState(null);
 
   // ---- Load dropdowns on mount ----
   useEffect(() => {
@@ -164,22 +160,25 @@ export default function Criterion1_1() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!selectedSemester) return showAlert("Please select a semester.", "warning");
-    if (!year) return showAlert("Please enter the Year of Introduction.", "warning");
+    if (!selectedDept) return showAlert("Please select a Department / Programme.", "danger");
+    if (!selectedSemester) return showAlert("Please select a Semester.", "danger");
+    if (!year) return showAlert("Year of Introduction is required.", "danger");
     for (const row of courseRows) {
-      if (!row.courseCode) return showAlert("Please select a course code for all rows.", "warning");
+      if (!row.courseCode) return showAlert("Please select a Course Code for every row.", "danger");
     }
     
     let saved = 0, skipped = 0, errors = [];
-    
+    setSubmitting(true);
+    try {
     for (const row of courseRows) {
-      const data = {
+      let data = {
         department:  selectedDept,
         programCode,
         programName: selectedSemester,
         courseCode:  row.courseCode,
         courseName:  row.courseName,
         year,
+        academicYear: user.academic_year || "",
       };
       const result = await addRecord("1_1", data);
       if (result.success) {
@@ -206,6 +205,9 @@ export default function Criterion1_1() {
     } else {
       showAlert(`${saved} record(s) saved successfully!`, "success");
     }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // ---- Delete single ----
@@ -219,10 +221,19 @@ export default function Criterion1_1() {
   // ---- Edit ----
   const handleEdit = async (e) => {
     e.preventDefault();
-    await updateRecord("1_1", editRecord.id, editRecord);
-    setRecords(prev => prev.map(r => r.id === editRecord.id ? editRecord : r));
-    setEditRecord(null);
-    showAlert("Record updated!", "success");
+    setSubmitting(true);
+    try {
+      let payload = { ...editRecord };
+      delete payload.proofFile;
+      await updateRecord("1_1", editRecord.id, payload);
+      setRecords(prev => prev.map(r => r.id === editRecord.id ? { ...payload, id: editRecord.id } : r));
+      setEditRecord(null);
+      showAlert("Record updated!", "success");
+    } catch (err) {
+      showAlert(err.message || "Update failed.", "danger");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
 
@@ -234,18 +245,24 @@ export default function Criterion1_1() {
   const handleExportExcel = () => {
       window.open(getExcelExportUrl("1_1"), "_blank");
   };
+  const currentAcademicYear = user.academic_year || "";
 
-  const handleProofUpload = async () => {
-    if (!proofFiles || proofFiles.length === 0) return showAlert("Please select files first.", "warning");
-    setUploading(true);
-    const res = await uploadEvidence("1_1", proofFiles);
-    setUploading(false);
-    if (res.success) {
-        setProofLink("http://localhost:5000" + res.link);
-        showAlert("Proof files uploaded and combined into PDF successfully!", "success");
-    } else {
-        showAlert("Upload failed: " + res.error, "danger");
-    }
+  const getCourseOptionStatus = (rowIndex, courseCode) => {
+    const selectedInOtherRow = courseRows.some(
+      (r, i) => i !== rowIndex && r.courseCode === courseCode
+    );
+
+    // Check DB-loaded records as well (not just current page row selections).
+    // If a course already exists in records, mark it as already added.
+    const alreadySaved = records.some((r) => {
+      if (r.courseCode !== courseCode) return false;
+      const recAcademicYear = r.academicYear || r.academic_year;
+      // Prefer current academic year context when available.
+      if (currentAcademicYear) return recAcademicYear === currentAcademicYear;
+      return true;
+    });
+
+    return { selectedInOtherRow, alreadySaved };
   };
 
   return (
@@ -257,7 +274,7 @@ export default function Criterion1_1() {
         <header className="page-header">
           <div>
             <h4 className="mb-0 fw-bold text-danger">Criteria 1.1: Curriculum Design</h4>
-            <small className="text-muted">Academic Year: {user.academic_year || 'Not Selected'}</small>
+            <p className="mb-0 text-muted small">1.1 Number of courses offered by the Institution across all programs during the year</p>
           </div>
           <button className="btn btn-success btn-sm" onClick={handleExportExcel}>
             <i className="bi bi-file-earmark-excel me-1"></i> Export Excel
@@ -368,6 +385,10 @@ export default function Criterion1_1() {
 
                 {/* Course Rows */}
                 <div id="course-container">
+                  <small className="text-muted d-block mb-2">
+                    Labels: <strong>(Selected)</strong> = already chosen in another row,{" "}
+                    <strong>(Already Added)</strong> = already saved for this semester/year.
+                  </small>
                   {courseRows.map((row, idx) => (
                     <div key={idx}>
                       <div className="row g-3 mb-2">
@@ -381,9 +402,27 @@ export default function Criterion1_1() {
                             <option value="" disabled>
                               {selectedSemester ? "Select Course Code" : "Select a semester first"}
                             </option>
-                            {courses.map(c => (
-                              <option key={c.code} value={c.code}>{c.code} — {c.name}</option>
-                            ))}
+                            {courses.map(c => {
+                              const { selectedInOtherRow, alreadySaved } = getCourseOptionStatus(idx, c.code);
+                              const isUnavailable = selectedInOtherRow || alreadySaved;
+                              let suffix = "";
+                              if (selectedInOtherRow) suffix = " (Selected)";
+                              else if (alreadySaved) suffix = " (Already Added)";
+
+                              return (
+                                <option
+                                  key={c.code}
+                                  value={c.code}
+                                  disabled={isUnavailable}
+                                  style={{
+                                    color: isUnavailable ? "#9ca3af" : "#111827",
+                                    fontWeight: isUnavailable ? 400 : 700
+                                  }}
+                                >
+                                  {c.code} — {c.name}{suffix}
+                                </option>
+                              );
+                            })}
                             <option value="__ADD_NEW__">+ Add New Course...</option>
                           </select>
                         </div>
@@ -451,8 +490,8 @@ export default function Criterion1_1() {
                   <button type="button" className="btn btn-sm btn-outline-primary" onClick={addCourseRow}>
                     + Add Course Row
                   </button>
-                  <button type="submit" className="btn btn-danger px-5 fw-bold">
-                    Save Academic Records
+                  <button type="submit" className="btn btn-danger px-5 fw-bold" disabled={submitting}>
+                    {submitting ? "Saving…" : "Save Academic Records"}
                   </button>
                 </div>
               </form>
@@ -478,7 +517,11 @@ export default function Criterion1_1() {
                 {records.filter(r => {
                   if (!user.academic_year) return true;
                   const startYear = user.academic_year.split('-')[0];
-                  return r.academicYear === user.academic_year || String(r.year) === startYear;
+                  return (
+                    r.academicYear === user.academic_year ||
+                    r.academic_year === user.academic_year ||
+                    String(r.year) === startYear
+                  );
                 }).length === 0 ? (
                   <tr>
                     <td colSpan={6} className="text-center text-muted py-4">
@@ -490,7 +533,11 @@ export default function Criterion1_1() {
                   .filter(r => {
                     if (!user.academic_year) return true;
                     const startYear = user.academic_year.split('-')[0];
-                    return r.academicYear === user.academic_year || String(r.year) === startYear;
+                    return (
+                      r.academicYear === user.academic_year ||
+                      r.academic_year === user.academic_year ||
+                      String(r.year) === startYear
+                    );
                   })
                   .map((row) => (
                   <tr key={row.id}>
@@ -521,44 +568,7 @@ export default function Criterion1_1() {
               </tbody>
             </table>
           </div>
-
-          {/* ---- PROOF SECTION ---- */}
-          <div className="mt-5 p-4 rounded proof-section shadow-sm bg-white border">
-            <h5 className="fw-bold text-dark mb-1">Final Criteria Proof Submission</h5>
-            <p className="text-muted small mb-4">Upload multiple images/PDFs to combine, or paste a Google Drive link.</p>
-            
-            <div className="mb-3">
-              <label className="form-label fw-bold small">Upload Evidence Files</label>
-              <div className="input-group">
-                <input 
-                  type="file" className="form-control" multiple 
-                  onChange={e => setProofFiles(e.target.files)} 
-                  accept="image/*,.pdf"
-                />
-                <button 
-                  className="btn btn-primary" 
-                  onClick={handleProofUpload}
-                  disabled={uploading}
-                >
-                  {uploading ? "Uploading & Combining..." : "Upload & Combine PDF"}
-                </button>
-              </div>
-            </div>
-
-            <div className="input-group">
-              <input
-                type="url" className="form-control"
-                placeholder="Or paste Google Drive PDF / Uploaded link here..."
-                value={proofLink} onChange={e => setProofLink(e.target.value)}
-              />
-              <button
-                className="btn btn-success px-4 fw-bold"
-                onClick={() => showAlert("Proof link submitted!", "success")}
-              >
-                Save Proof Link
-              </button>
-            </div>
-          </div>
+          <CriterionProofFileSection criterionKey="1_1" />
         </div>
 
         {/* ---- EDIT MODAL ---- */}
@@ -590,7 +600,9 @@ export default function Criterion1_1() {
                 </div>
                 <div className="modal-footer">
                   <button type="button" className="btn btn-secondary" onClick={() => setEditRecord(null)}>Cancel</button>
-                  <button type="submit" className="btn btn-success">Save Changes</button>
+                  <button type="submit" className="btn btn-success" disabled={submitting}>
+                    {submitting ? "Saving…" : "Save Changes"}
+                  </button>
                 </div>
               </form>
             </div>

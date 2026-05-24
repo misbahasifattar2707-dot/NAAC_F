@@ -3,11 +3,11 @@
 // Academic year dropdown fetched from apiService
 // ============================================================
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import Sidebar from "../../components/Sidebar";
 import Footer from "../../components/Footer";
+import { CriterionProofFileSection } from "../../components/criteria/CriterionProofSection";
 import {
-  getAcademicYears, getRecords, addRecord, deleteRecord
+  getAcademicYears, getRecords, addRecord, deleteRecord, getExcelExportUrl
 } from "../../api/apiService";
 
 const CATS = ["SC", "ST", "OBC", "Gen", "Others"];
@@ -19,7 +19,6 @@ const emptyForm = () => ({
 });
 
 export default function Criterion2_1_2() {
-  const navigate = useNavigate();
   const [yearOptions, setYearOptions] = useState([]);
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
   const [form, setForm] = useState(emptyForm());
@@ -70,7 +69,7 @@ export default function Criterion2_1_2() {
             <h4>2.1.2: Seats Filled Against Reserved Seats</h4>
             <small className="text-muted" style={{ fontSize: "0.75rem" }}>Exclusive of supernumerary seats</small>
           </div>
-          <button className="btn btn-success btn-sm fw-semibold" onClick={() => navigate("/export/2-1-2")}>
+          <button className="btn btn-success btn-sm fw-semibold" onClick={() => window.open(getExcelExportUrl("2_1_2"), "_blank")}>
             <i className="bi bi-file-earmark-excel me-1"></i> Export Excel
           </button>
         </header>
@@ -194,6 +193,8 @@ export default function Criterion2_1_2() {
             </div>
           </div>
         </div>
+
+          <CriterionProofFileSection criterionKey="2_1_2" />
         <Footer />
       </div>
     </div>
