@@ -667,6 +667,23 @@ def _resolve_or_create_student_by_name(name):
     return stu
 
 
+def _resolve_or_create_teacher_by_name(name, pan=None, designation=None):
+    """Find teacher by name or create a minimal row for dropdown-driven criteria."""
+    nm = ' '.join((name or '').split()).strip()
+    if not nm:
+        return None
+    t = Teacher.query.filter_by(name=nm).first()
+    if not t:
+        t = Teacher(
+            name=nm,
+            pan=(pan or '').strip() or None,
+            designation=(designation or '').strip() or None,
+        )
+        db.session.add(t)
+        db.session.flush()
+    return t
+
+
 def _resolve_or_create_program(code, name=None):
     """Look up a programme by code; auto-create a minimal row if not found so FK constraints are satisfied."""
     code = (code or '').strip()
@@ -781,7 +798,8 @@ def _finalize_criterion_create(criterion, model, data, db_kwargs):
         if sid:
             db_kwargs['student_id'] = sid
         if 'passing_year' in data:
-            db_kwargs['year_of_passing'] = str(data['passing_year']).strip()
+            ys = _year_start_from_offering_ui(data.get('passing_year'))
+            db_kwargs['year_of_passing'] = ys if ys is not None else str(data['passing_year']).strip()
 
     if tbl == 'c233_mentor_ratio':
         db_kwargs['academic_year'] = (data.get('academic_year') or session.get('academic_year') or '').strip()
@@ -898,7 +916,8 @@ def _apply_criterion_put(criterion, model, rec, data):
     tbl = model.__tablename__
     if tbl == 'c23_outgoing_students':
         if 'passing_year' in data:
-            rec.year_of_passing = str(data['passing_year']).strip()
+            ys = _year_start_from_offering_ui(data.get('passing_year'))
+            rec.year_of_passing = ys if ys is not None else str(data['passing_year']).strip()
         if getattr(rec, 'student_id', None) and ('student_name' in data or 'enrollment_number' in data):
             s = Student.query.get(rec.student_id)
             if s:
@@ -1328,9 +1347,9 @@ def add_record(criterion):
             pass
     if not db_kwargs.get('teacher_id') and 'teacherName' in data:
         tn = (data.get('teacherName') or '').strip()
-        if tn:
-            t = Teacher.query.filter_by(name=tn).first()
-            if t and hasattr(model, 'teacher_id'):
+        if tn and hasattr(model, 'teacher_id'):
+            t = _resolve_or_create_teacher_by_name(tn)
+            if t:
                 db_kwargs['teacher_id'] = t.id
     st_nm = (data.get('studentName') or data.get('student_name') or '').strip()
     if not st_nm and data.get('student_list'):
@@ -1361,7 +1380,8 @@ def add_record(criterion):
                 ys = _year_start_from_offering_ui(data.get('year'))
                 db_kwargs[col_name] = ys
             elif col_name == 'year_of_passing' and 'passing_year' in data:
-                db_kwargs[col_name] = str(data['passing_year']).strip()
+                ys = _year_start_from_offering_ui(data.get('passing_year'))
+                db_kwargs[col_name] = ys if ys is not None else str(data['passing_year']).strip()
             elif col_name == 'year_of_passing' and 'year' in data:
                 db_kwargs[col_name] = int(data['year']) if str(data['year']).isdigit() else data['year']
             elif col_name == 'year_of_implementation' and 'cbcsYear' in data:
@@ -1471,7 +1491,7 @@ def update_record(criterion, id):
         if 'teacherName' in data:
             tn = (data.get('teacherName') or '').strip()
             if tn:
-                t = Teacher.query.filter_by(name=tn).first()
+                t = _resolve_or_create_teacher_by_name(tn)
                 if t:
                     rec.teacher_id = t.id
     st_nm = (data.get('studentName') or data.get('student_name') or '').strip()
@@ -1515,7 +1535,8 @@ def update_record(criterion, id):
                 if ys is not None:
                     setattr(rec, col_name, ys)
             elif col_name == 'year_of_passing' and 'passing_year' in data:
-                setattr(rec, col_name, str(data['passing_year']).strip())
+                ys = _year_start_from_offering_ui(data.get('passing_year'))
+                setattr(rec, col_name, ys if ys is not None else str(data['passing_year']).strip())
             elif col_name == 'year_of_implementation' and 'cbcsYear' in data:
                 setattr(rec, col_name, int(data['cbcsYear']) if str(data['cbcsYear']).isdigit() else getattr(rec, col_name))
             elif col_name == 'status_of_implementation' and 'cbcsStatus' in data:

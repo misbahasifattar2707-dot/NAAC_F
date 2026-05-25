@@ -1,6 +1,8 @@
+import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from app import create_app
 from extensions import db
-from models import SemesterLookup, SemesterCourseLookup, Teacher, AcademicYearLookup
+from models.models import SemesterLookup, SemesterCourseLookup, Teacher, AcademicYearLookup
 
 app = create_app()
 
@@ -54,13 +56,12 @@ courses_data = [
 ]
 
 teachers_data = [
-  "Mehraj I Khan",
-  "P.D. Jadhav",
-  "M.V. Khond",
-  "Javed R. Attar",
-  "Sonali L. Vidhate",
-  "Pritee Fuldeore",
-  "Dr. Nita Shinde"
+  "Prof. P.D.Jadhav",
+  "Prof. Manjusha.V.Khond",
+  "Prof. Javed R. Attar",
+  "Prof. Sonali Vidhate",
+  "Prof. Mehraj I Khan",
+  "Prof. Priti Fulduore"
 ]
 
 academic_years = ["2022-23", "2023-24", "2024-25", "2025-26", "2026-27"]

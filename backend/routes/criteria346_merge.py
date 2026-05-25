@@ -430,6 +430,13 @@ def register_c346_routes(api_bp, to_dict_fn):
                     primary_tid = t.id
         if other_name:
             names.append(other_name)
+            if primary_tid is None:
+                t = Teacher.query.filter_by(name=other_name).first()
+                if not t:
+                    t = Teacher(name=other_name)
+                    db.session.add(t)
+                    db.session.flush()
+                primary_tid = t.id
         try:
             rec = C322Books(
                 teacher_id=primary_tid,

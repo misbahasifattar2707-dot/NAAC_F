@@ -43,7 +43,13 @@ Open Notebook.onetoc2
 
 # Reference / local-only (not part of submission)
 naac-accrediation-system-main/
+docs/reference/
+dist/
 students list.pdf
 static/
 instance/
 debug.log
+
+.env.example
+
+config.py
