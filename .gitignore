@@ -53,3 +53,13 @@ debug.log
 .env.example
 
 config.py
+
+.env
+backend/.env
+backend/config.py
+venv/
+node_modules/
+__pycache__/
+.vscode/
+dist/
+build/
